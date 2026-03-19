@@ -1,0 +1,23 @@
+<Window x:Class="ArchiveViewer.Dialogs.ConflictDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ファイルの競合" Width="420" Height="240" WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e" ResizeMode="NoResize" ShowInTaskbar="False">
+    <StackPanel Margin="16">
+        <TextBlock x:Name="FileNameText" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="13"
+                   FontWeight="Bold" TextWrapping="Wrap"/>
+        <TextBlock x:Name="SizeInfo" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                   Margin="0,8,0,0" TextWrapping="Wrap"/>
+        <TextBlock x:Name="CompareText" Foreground="#f59e0b" FontFamily="Yu Gothic UI" FontSize="11"
+                   Margin="0,4,0,16"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <Button Content="上書き" Width="100" Padding="6" Margin="4" Click="BtnOverwrite_Click"
+                    Background="#ef4444" Foreground="#e2e8f0" BorderBrush="#3f3f5e"/>
+            <Button Content="両方残す" Width="100" Padding="6" Margin="4" Click="BtnRename_Click"
+                    Background="#3b82f6" Foreground="#e2e8f0" BorderBrush="#3f3f5e"/>
+            <Button Content="スキップ" Width="100" Padding="6" Margin="4" Click="BtnSkip_Click"
+                    Background="#2a2a3e" Foreground="#e2e8f0" BorderBrush="#3f3f5e"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

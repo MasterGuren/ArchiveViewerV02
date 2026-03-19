@@ -1,0 +1,281 @@
+<Window x:Class="ArchiveViewer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+        Title="Archive Viewer" Width="1400" Height="850" MinWidth="800" MinHeight="600"
+        Background="#1e1e2e" WindowStartupLocation="CenterScreen"
+        KeyDown="Window_KeyDown" PreviewMouseWheel="Window_PreviewMouseWheel"
+        PreviewMouseUp="Window_PreviewMouseUp"
+        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver"
+        Closing="Window_Closing" Loaded="Window_Loaded">
+
+    <Window.Resources>
+        <Style x:Key="DarkButton" TargetType="Button">
+            <Setter Property="Background" Value="#2a2a3e"/>
+            <Setter Property="Foreground" Value="#e2e8f0"/>
+            <Setter Property="BorderBrush" Value="#3f3f5e"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontFamily" Value="Yu Gothic UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#3a3a4e"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#7c3aed"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource DarkButton}">
+            <Setter Property="Background" Value="#7c3aed"/>
+        </Style>
+
+        <Style x:Key="ModeButton" TargetType="ToggleButton">
+            <Setter Property="Background" Value="#2a2a3e"/>
+            <Setter Property="Foreground" Value="#94a3b8"/>
+            <Setter Property="BorderBrush" Value="#3f3f5e"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="FontFamily" Value="Yu Gothic UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#7c3aed"/>
+                                <Setter Property="Foreground" Value="#e2e8f0"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#3a3a4e"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DarkTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#1e1e2e"/>
+            <Setter Property="Foreground" Value="#e2e8f0"/>
+            <Setter Property="BorderBrush" Value="#3f3f5e"/>
+            <Setter Property="CaretBrush" Value="#e2e8f0"/>
+            <Setter Property="FontFamily" Value="Yu Gothic UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="4,2"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="56"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="30"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <Border Grid.Row="0" Background="#2a2a3e" BorderBrush="#3f3f5e" BorderThickness="0,0,0,1">
+            <DockPanel Margin="8,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="📦" FontFamily="Segoe UI Emoji" FontSize="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ToggleButton x:Name="BtnBrowse" Content="閲覧" Style="{StaticResource ModeButton}" Click="BtnBrowse_Click" IsChecked="True" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnExtract" Content="抽出" Style="{StaticResource ModeButton}" Click="BtnExtract_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnVideo" Content="動画" Style="{StaticResource ModeButton}" Click="BtnVideo_Click" Margin="0,0,12,0"/>
+
+                    <Border Width="1" Background="#3f3f5e" Margin="0,8"/>
+
+                    <ToggleButton x:Name="BtnSortName" Content="名前順" Style="{StaticResource ModeButton}" Click="BtnSortName_Click" IsChecked="True" Margin="12,0,2,0"/>
+                    <ToggleButton x:Name="BtnSortDate" Content="更新日順" Style="{StaticResource ModeButton}" Click="BtnSortDate_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnSortRandom" Content="ランダム" Style="{StaticResource ModeButton}" Click="BtnSortRandom_Click" Margin="0,0,12,0"/>
+
+                    <Border Width="1" Background="#3f3f5e" Margin="0,8"/>
+
+                    <ToggleButton x:Name="BtnPortrait" Content="縦" Style="{StaticResource ModeButton}" Click="BtnPortrait_Click" IsChecked="True" Margin="12,0,2,0"/>
+                    <ToggleButton x:Name="BtnLandscape" Content="横" Style="{StaticResource ModeButton}" Click="BtnLandscape_Click" Margin="0,0,12,0"/>
+
+                    <Border Width="1" Background="#3f3f5e" Margin="0,8"/>
+
+                    <Button x:Name="BtnOpen" Content="📁 開く" Style="{StaticResource DarkButton}" Click="BtnOpen_Click" Margin="12,0,4,0" FontFamily="Segoe UI Emoji, Yu Gothic UI"/>
+
+                    <Button x:Name="BtnExtractRange" Content="✂️ 範囲を抽出" Style="{StaticResource AccentButton}"
+                            Click="BtnExtractRange_Click" Visibility="Collapsed" Margin="4,0,2,0"/>
+                    <Button x:Name="BtnClearSelection" Content="🗑 選択解除" Style="{StaticResource DarkButton}"
+                            Click="BtnClearSelection_Click" Visibility="Collapsed" Margin="2,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock x:Name="TxtPrevFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="10"
+                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <Button x:Name="BtnPrev" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
+                            Padding="6,4" Margin="0,0,4,0"/>
+                    <TextBlock x:Name="TxtCurrentFile" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12"
+                               VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,4,0"/>
+                    <Button x:Name="BtnNext" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
+                            Padding="6,4" Margin="0,0,4,0"/>
+                    <TextBlock x:Name="TxtNextFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="10"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- MAIN CONTENT -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="RightSidebarCol" Width="0"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT SIDEBAR -->
+            <Border Grid.Column="0" Background="#2a2a3e" BorderBrush="#3f3f5e" BorderThickness="0,0,1,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="LeftSidebar" Margin="12"/>
+                </ScrollViewer>
+            </Border>
+
+            <!-- MAIN AREA -->
+            <Grid Grid.Column="1">
+                <ScrollViewer x:Name="GridScroller" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Background="#1e1e2e"
+                              PreviewMouseWheel="GridScroller_PreviewMouseWheel">
+                    <WrapPanel x:Name="ThumbnailGrid" Margin="8"/>
+                </ScrollViewer>
+
+                <StackPanel x:Name="EmptyMessage" VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Visibility="Visible">
+                    <TextBlock Text="📦" FontFamily="Segoe UI Emoji" FontSize="48" HorizontalAlignment="Center"/>
+                    <TextBlock Text="アーカイブをドロップまたは「開く」で選択" Foreground="#94a3b8"
+                               FontFamily="Yu Gothic UI" FontSize="14" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <Border x:Name="ProgressOverlay" Background="#CC1e1e2e" Visibility="Collapsed">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <ProgressBar x:Name="LoadProgress" Width="300" Height="20" Minimum="0" Maximum="100"
+                                     Foreground="#7c3aed" Background="#2a2a3e"/>
+                        <TextBlock x:Name="ProgressText" Text="読み込み中..." Foreground="#e2e8f0"
+                                   FontFamily="Yu Gothic UI" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Image Viewer Overlay -->
+                <Grid x:Name="ViewerOverlay" Visibility="Collapsed" Background="#1e1e2e"
+                      MouseLeftButtonDown="ViewerOverlay_MouseLeftButtonDown"
+                      MouseMove="ViewerOverlay_MouseMove">
+                    <Image x:Name="ViewerImage" Stretch="Uniform" Margin="8"/>
+                    <Border x:Name="ViewerBottomBar" VerticalAlignment="Bottom" Height="80"
+                            Background="#CC2a2a3e" Opacity="0" IsHitTestVisible="True"
+                            MouseEnter="ViewerBottomBar_MouseEnter" MouseLeave="ViewerBottomBar_MouseLeave">
+                        <StackPanel VerticalAlignment="Center" Margin="16,0">
+                            <Slider x:Name="ViewerSlider" Minimum="0" Maximum="100"
+                                    ValueChanged="ViewerSlider_ValueChanged" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="ViewerInfo" Foreground="#94a3b8"
+                                       FontFamily="Yu Gothic UI" FontSize="11" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Video Player Overlay -->
+                <Grid x:Name="VideoOverlay" Visibility="Collapsed" Background="#1e1e2e">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <vlc:VideoView x:Name="VideoView" Grid.Row="0" Background="Black">
+                        <!-- VideoView.Content is overlaid on top of the video (airspace workaround) -->
+                        <Grid Background="#01000000"
+                              MouseLeftButtonDown="VideoSurface_Click"
+                              MouseWheel="VideoSurface_MouseWheel"/>
+                    </vlc:VideoView>
+
+                    <Border Grid.Row="1" Background="#2a2a3e" Padding="8">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock x:Name="VideoTimeText" DockPanel.Dock="Right" Foreground="#94a3b8"
+                                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"
+                                           Margin="8,0,0,0" Text="00:00 / 00:00"/>
+                                <Canvas x:Name="SeekBarCanvas" Height="20" Background="Transparent"
+                                        MouseLeftButtonDown="SeekBar_MouseDown" MouseMove="SeekBar_MouseMove"
+                                        MouseLeftButtonUp="SeekBar_MouseUp"/>
+                            </DockPanel>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
+                                <Button Content="⏪10m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-600" Padding="4,2" Margin="1,0"/>
+                                <Button Content="⏪3m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-180" Padding="4,2" Margin="1,0"/>
+                                <Button Content="⏪30s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-30" Padding="4,2" Margin="1,0"/>
+                                <Button Content="⏪10s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-10" Padding="4,2" Margin="1,0"/>
+                                <Button x:Name="BtnPlayPause" Content="▶" Style="{StaticResource AccentButton}" Click="BtnPlayPause_Click" Padding="12,4" Margin="4,0"/>
+                                <Button Content="10s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="10" Padding="4,2" Margin="1,0"/>
+                                <Button Content="30s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="30" Padding="4,2" Margin="1,0"/>
+                                <Button Content="3m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="180" Padding="4,2" Margin="1,0"/>
+                                <Button Content="10m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="600" Padding="4,2" Margin="1,0"/>
+                            </StackPanel>
+
+                            <DockPanel>
+                                <Button Content="✕ 閉じる" Style="{StaticResource DarkButton}" DockPanel.Dock="Right"
+                                        Click="BtnCloseVideo_Click" Padding="8,2"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="音量:" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="100"
+                                            Value="80" ValueChanged="VolumeSlider_ValueChanged" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="VolumeText" Text="80%" Foreground="#94a3b8"
+                                               FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- RIGHT SIDEBAR (Extract mode only) -->
+            <Border x:Name="RightSidebar" Grid.Column="2" Background="#2a2a3e"
+                    BorderBrush="#3f3f5e" BorderThickness="1,0,0,0" Visibility="Collapsed">
+                <DockPanel Margin="12">
+                    <Button DockPanel.Dock="Top" Content="選択範囲をリストに追加"
+                            Style="{StaticResource AccentButton}" Click="BtnAddToExtractList_Click" Margin="0,0,0,8"/>
+                    <Button DockPanel.Dock="Bottom" Content="抽出実行"
+                            Style="{StaticResource AccentButton}" Click="BtnExecuteExtract_Click" Margin="0,8,0,0"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ExtractListPanel"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- STATUS BAR -->
+        <Border Grid.Row="2" Background="#2a2a3e" BorderBrush="#3f3f5e" BorderThickness="0,1,0,0">
+            <DockPanel Margin="8,0">
+                <TextBlock x:Name="TxtFileSize" DockPanel.Dock="Left" Foreground="#94a3b8"
+                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <TextBlock x:Name="TxtSelectionInfo" DockPanel.Dock="Right" Foreground="#94a3b8"
+                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TxtStatus" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                           VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="TxtStatus_Click"
+                           TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

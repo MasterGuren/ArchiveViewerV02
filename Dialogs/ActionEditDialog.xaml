@@ -1,0 +1,30 @@
+<Window x:Class="ArchiveViewer.Dialogs.ActionEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="アクション編集" Width="380" Height="320" WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e" ResizeMode="NoResize" ShowInTaskbar="False">
+    <StackPanel Margin="16">
+        <TextBlock Text="ボタン名" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,0,0,4"/>
+        <TextBox x:Name="LabelBox" Background="#2a2a3e" Foreground="#e2e8f0" BorderBrush="#3f3f5e"
+                 CaretBrush="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12" Padding="4"
+                 TextChanged="LabelBox_TextChanged"/>
+
+        <TextBlock Text="色" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,12,0,4"/>
+        <WrapPanel x:Name="ColorPanel"/>
+
+        <TextBlock Text="プレビュー" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,12,0,4"/>
+        <Button x:Name="PreviewBtn" Content="プレビュー" Width="120" Height="30"
+                Foreground="#e2e8f0" BorderBrush="#3f3f5e" FontFamily="Yu Gothic UI"
+                HorizontalAlignment="Left"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="BtnDelete" Content="削除" Width="80" Padding="4" Margin="0,0,8,0"
+                    Background="#7f1d1d" Foreground="#e2e8f0" BorderBrush="#3f3f5e"
+                    Click="BtnDelete_Click" Visibility="Collapsed"/>
+            <Button Content="OK" Width="80" Padding="4" Margin="0,0,8,0" Click="BtnOk_Click"
+                    Background="#7c3aed" Foreground="#e2e8f0" BorderBrush="#3f3f5e"/>
+            <Button Content="キャンセル" Width="80" Padding="4" Click="BtnCancel_Click"
+                    Background="#2a2a3e" Foreground="#e2e8f0" BorderBrush="#3f3f5e"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
