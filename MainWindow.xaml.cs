@@ -62,7 +62,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _videoTimer;
     private bool _seekDragging;
     private int _videoVolume = 80;
-    // VideoView is declared in XAML (LibVLCSharp.WPF.VideoView)
+    private LibVLCSharp.WPF.VideoView? _videoView; // created/destroyed dynamically
 
     // Presets (3 mode sets)
     private Dictionary<string, PresetData> _presets = new();
@@ -88,6 +88,7 @@ public partial class MainWindow : Window
 
     [DllImport("shell32.dll")]
     private static extern void SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string appId);
+
 
     public MainWindow()
     {
@@ -243,9 +244,18 @@ public partial class MainWindow : Window
         RightSidebarCol.Width = isExtract ? new GridLength(300) : new GridLength(0);
         RightSidebar.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
 
-        // Show/hide video
+        // Show/hide video — モード切替時に動画を閉じる
         bool isVideo = mode == "video";
-        VideoOverlay.Visibility = isVideo && _videoPath != null ? Visibility.Visible : Visibility.Collapsed;
+        if (!isVideo && _videoPath != null)
+        {
+            StopVideo();
+            _videoPath = null;
+            VideoOverlay.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            VideoOverlay.Visibility = isVideo && _videoPath != null ? Visibility.Visible : Visibility.Collapsed;
+        }
 
         // Show grid for browse/extract
         GridScroller.Visibility = isVideo ? Visibility.Collapsed : Visibility.Visible;
@@ -1133,11 +1143,13 @@ public partial class MainWindow : Window
         {
             TxtPrevFile.Text = "";
             TxtCurrentFile.Text = _archivePath != null ? Path.GetFileName(_archivePath) : "";
+            TxtFilePosition.Text = "";
             TxtNextFile.Text = "";
             return;
         }
 
-        TxtCurrentFile.Text = $"{Path.GetFileName(_archivePath)} ({_currentArchiveIndex + 1}/{_folderArchives.Count})";
+        TxtCurrentFile.Text = Path.GetFileName(_archivePath) ?? "";
+        TxtFilePosition.Text = $"({_currentArchiveIndex + 1}/{_folderArchives.Count})";
         TxtPrevFile.Text = _currentArchiveIndex > 0 ? Path.GetFileName(_folderArchives[_currentArchiveIndex - 1]) : "";
         TxtNextFile.Text = _currentArchiveIndex < _folderArchives.Count - 1
             ? Path.GetFileName(_folderArchives[_currentArchiveIndex + 1]) : "";
@@ -1735,8 +1747,9 @@ public partial class MainWindow : Window
             VolumeSlider.Value = _videoVolume;
             VolumeText.Text = $"{_videoVolume}%";
 
-            // Attach player to VideoView (LibVLCSharp.WPF handles HWND internally)
-            VideoView.MediaPlayer = _vlcPlayer;
+            // Create VideoView dynamically and add to visual tree
+            CreateVideoView();
+            _videoView!.MediaPlayer = _vlcPlayer;
 
             // Use file path directly (not Uri) to avoid encoding issues with Japanese characters
             using var media = new Media(_libVlc, path, FromType.FromPath);
@@ -1765,19 +1778,47 @@ public partial class MainWindow : Window
             try
             {
                 _vlcPlayer.Stop();
-                // Release media first to unlock the file
                 var media = _vlcPlayer.Media;
                 _vlcPlayer.Media = null;
                 media?.Dispose();
-                VideoView.MediaPlayer = null;
+                if (_videoView != null)
+                    _videoView.MediaPlayer = null;
                 _vlcPlayer.Dispose();
             }
             catch { }
             _vlcPlayer = null;
 
-            // Give VLC time to release file handles
             Thread.Sleep(100);
         }
+
+        // VideoViewをビジュアルツリーから完全除去（WindowsFormsHostのフォーカス問題を根治）
+        DestroyVideoView();
+    }
+
+    private void CreateVideoView()
+    {
+        if (_videoView != null) return;
+        _videoView = new LibVLCSharp.WPF.VideoView { Background = System.Windows.Media.Brushes.Black };
+        // Airspace overlay for mouse events
+        var overlay = new Grid { Background = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromArgb(1, 0, 0, 0)) };
+        overlay.MouseLeftButtonDown += VideoSurface_Click;
+        overlay.MouseWheel += VideoSurface_MouseWheel;
+        overlay.MouseUp += (s, e) =>
+        {
+            if (e.ChangedButton == MouseButton.XButton1) { NavigateVideo(-1); e.Handled = true; }
+            else if (e.ChangedButton == MouseButton.XButton2) { NavigateVideo(1); e.Handled = true; }
+        };
+        _videoView.Content = overlay;
+        VideoViewHost.Children.Add(_videoView);
+    }
+
+    private void DestroyVideoView()
+    {
+        if (_videoView == null) return;
+        VideoViewHost.Children.Remove(_videoView);
+        _videoView.Dispose();
+        _videoView = null;
     }
 
     private string? _lastVideoDirCache;
@@ -1832,10 +1873,14 @@ public partial class MainWindow : Window
 
     private void UpdateVideoNavigation()
     {
-        TxtCurrentFile.Text = _videoPath != null ? $"{Path.GetFileName(_videoPath)} ({_currentVideoIndex + 1}/{_videoFiles.Count})" : "";
+        TxtCurrentFile.Text = _videoPath != null ? Path.GetFileName(_videoPath) : "";
+        TxtFilePosition.Text = _videoPath != null ? $"({_currentVideoIndex + 1}/{_videoFiles.Count})" : "";
         TxtPrevFile.Text = _currentVideoIndex > 0 ? Path.GetFileName(_videoFiles[_currentVideoIndex - 1]) : "";
         TxtNextFile.Text = _currentVideoIndex < _videoFiles.Count - 1 ? Path.GetFileName(_videoFiles[_currentVideoIndex + 1]) : "";
     }
+
+    private void BtnVideoPrev_Click(object sender, RoutedEventArgs e) => NavigateVideo(-1);
+    private void BtnVideoNext_Click(object sender, RoutedEventArgs e) => NavigateVideo(1);
 
     private void NavigateVideo(int delta)
     {
@@ -2083,30 +2128,20 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (_mode == "video") return;
+
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
-            if (_mode != "video")
-            {
-                ZoomThumbnails(e.Delta > 0 ? 1 : -1);
-                e.Handled = true;
-            }
+            ZoomThumbnails(e.Delta > 0 ? 1 : -1);
+            e.Handled = true;
         }
         else if (_viewerOpen)
         {
             ViewerNavigate(e.Delta > 0 ? -1 : 1);
             e.Handled = true;
         }
-        // Video mouse wheel seek is handled by VideoSurface_MouseWheel (only on video area)
     }
 
-    private void GridScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || _viewerOpen)
-        {
-            // Let Window_PreviewMouseWheel handle it
-            return;
-        }
-    }
 
     // ======== DRAG & DROP ========
 

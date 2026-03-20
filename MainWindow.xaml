@@ -127,15 +127,20 @@
 
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                     <TextBlock x:Name="TxtPrevFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="10"
-                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                               VerticalAlignment="Center" Margin="0,0,4,0"
+                               MaxWidth="200" TextTrimming="CharacterEllipsis"/>
                     <Button x:Name="BtnPrev" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
                             Padding="6,4" Margin="0,0,4,0"/>
                     <TextBlock x:Name="TxtCurrentFile" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12"
-                               VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,4,0"/>
+                               VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,2,0"
+                               MaxWidth="350" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="TxtFilePosition" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                               VerticalAlignment="Center" Margin="0,0,4,0"/>
                     <Button x:Name="BtnNext" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
                             Padding="6,4" Margin="0,0,4,0"/>
                     <TextBlock x:Name="TxtNextFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="10"
-                               VerticalAlignment="Center"/>
+                               VerticalAlignment="Center"
+                               MaxWidth="200" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -158,8 +163,7 @@
             <!-- MAIN AREA -->
             <Grid Grid.Column="1">
                 <ScrollViewer x:Name="GridScroller" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled" Background="#1e1e2e"
-                              PreviewMouseWheel="GridScroller_PreviewMouseWheel">
+                              HorizontalScrollBarVisibility="Disabled" Background="#1e1e2e">
                     <WrapPanel x:Name="ThumbnailGrid" Margin="8"/>
                 </ScrollViewer>
 
@@ -203,12 +207,8 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <vlc:VideoView x:Name="VideoView" Grid.Row="0" Background="Black">
-                        <!-- VideoView.Content is overlaid on top of the video (airspace workaround) -->
-                        <Grid Background="#01000000"
-                              MouseLeftButtonDown="VideoSurface_Click"
-                              MouseWheel="VideoSurface_MouseWheel"/>
-                    </vlc:VideoView>
+                    <!-- VideoView is added/removed dynamically to avoid WindowsFormsHost focus issues -->
+                    <Grid x:Name="VideoViewHost" Grid.Row="0" Background="Black"/>
 
                     <Border Grid.Row="1" Background="#2a2a3e" Padding="8">
                         <StackPanel>
@@ -222,6 +222,7 @@
                             </DockPanel>
 
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
+                                <Button Content="⏮" Style="{StaticResource AccentButton}" Click="BtnVideoPrev_Click" Padding="8,4" Margin="4,0" ToolTip="前の動画" FontSize="14"/>
                                 <Button Content="⏪10m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-600" Padding="4,2" Margin="1,0"/>
                                 <Button Content="⏪3m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-180" Padding="4,2" Margin="1,0"/>
                                 <Button Content="⏪30s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-30" Padding="4,2" Margin="1,0"/>
@@ -231,6 +232,7 @@
                                 <Button Content="30s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="30" Padding="4,2" Margin="1,0"/>
                                 <Button Content="3m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="180" Padding="4,2" Margin="1,0"/>
                                 <Button Content="10m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="600" Padding="4,2" Margin="1,0"/>
+                                <Button Content="⏭" Style="{StaticResource AccentButton}" Click="BtnVideoNext_Click" Padding="8,4" Margin="4,0" ToolTip="次の動画" FontSize="14"/>
                             </StackPanel>
 
                             <DockPanel>
