@@ -16,6 +16,9 @@ public class PresetData
     [JsonPropertyName("trash_folder")]
     public string TrashFolder { get; set; } = "";
 
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = "";
+
     public PresetData Clone()
     {
         return new PresetData
@@ -23,7 +26,8 @@ public class PresetData
             Actions = Actions.Select(a => a.Clone()).ToList(),
             SourceFolders = new List<string>(SourceFolders),
             VideoFolders = new List<string>(VideoFolders),
-            TrashFolder = TrashFolder
+            TrashFolder = TrashFolder,
+            Category = Category
         };
     }
 }

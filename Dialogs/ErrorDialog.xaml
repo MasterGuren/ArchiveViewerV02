@@ -12,7 +12,7 @@
         </StackPanel>
         <TextBox x:Name="ErrorText" IsReadOnly="True" TextWrapping="Wrap"
                  Background="#2a2a3e" Foreground="#e2e8f0" BorderBrush="#3f3f5e"
-                 FontFamily="Yu Gothic UI" FontSize="12" Padding="8"
+                 FontFamily="Yu Gothic UI" FontSize="14" Padding="8"
                  VerticalScrollBarVisibility="Auto"/>
     </DockPanel>
 </Window>

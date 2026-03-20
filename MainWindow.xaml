@@ -126,19 +126,19 @@
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <TextBlock x:Name="TxtPrevFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="10"
+                    <TextBlock x:Name="TxtPrevFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="14"
                                VerticalAlignment="Center" Margin="0,0,4,0"
                                MaxWidth="200" TextTrimming="CharacterEllipsis"/>
                     <Button x:Name="BtnPrev" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
                             Padding="6,4" Margin="0,0,4,0"/>
-                    <TextBlock x:Name="TxtCurrentFile" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="12"
+                    <TextBlock x:Name="TxtCurrentFile" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="14"
                                VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,2,0"
                                MaxWidth="350" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock x:Name="TxtFilePosition" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                    <TextBlock x:Name="TxtFilePosition" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="13"
                                VerticalAlignment="Center" Margin="0,0,4,0"/>
                     <Button x:Name="BtnNext" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
                             Padding="6,4" Margin="0,0,4,0"/>
-                    <TextBlock x:Name="TxtNextFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="10"
+                    <TextBlock x:Name="TxtNextFile" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="14"
                                VerticalAlignment="Center"
                                MaxWidth="200" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
@@ -195,7 +195,7 @@
                             <Slider x:Name="ViewerSlider" Minimum="0" Maximum="100"
                                     ValueChanged="ViewerSlider_ValueChanged" Margin="0,0,0,4"/>
                             <TextBlock x:Name="ViewerInfo" Foreground="#94a3b8"
-                                       FontFamily="Yu Gothic UI" FontSize="11" HorizontalAlignment="Center"/>
+                                       FontFamily="Yu Gothic UI" FontSize="13" HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -214,7 +214,7 @@
                         <StackPanel>
                             <DockPanel Margin="0,0,0,4">
                                 <TextBlock x:Name="VideoTimeText" DockPanel.Dock="Right" Foreground="#94a3b8"
-                                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"
+                                           FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center"
                                            Margin="8,0,0,0" Text="00:00 / 00:00"/>
                                 <Canvas x:Name="SeekBarCanvas" Height="20" Background="Transparent"
                                         MouseLeftButtonDown="SeekBar_MouseDown" MouseMove="SeekBar_MouseMove"
@@ -239,12 +239,12 @@
                                 <Button Content="✕ 閉じる" Style="{StaticResource DarkButton}" DockPanel.Dock="Right"
                                         Click="BtnCloseVideo_Click" Padding="8,2"/>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="音量:" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                                    <TextBlock Text="音量:" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="13"
                                                VerticalAlignment="Center" Margin="0,0,4,0"/>
                                     <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="100"
                                             Value="80" ValueChanged="VolumeSlider_ValueChanged" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="VolumeText" Text="80%" Foreground="#94a3b8"
-                                               FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                               FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                 </StackPanel>
                             </DockPanel>
                         </StackPanel>
@@ -271,10 +271,10 @@
         <Border Grid.Row="2" Background="#2a2a3e" BorderBrush="#3f3f5e" BorderThickness="0,1,0,0">
             <DockPanel Margin="8,0">
                 <TextBlock x:Name="TxtFileSize" DockPanel.Dock="Left" Foreground="#94a3b8"
-                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                           FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <TextBlock x:Name="TxtSelectionInfo" DockPanel.Dock="Right" Foreground="#94a3b8"
-                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"/>
-                <TextBlock x:Name="TxtStatus" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+                           FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TxtStatus" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="13"
                            VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="TxtStatus_Click"
                            TextTrimming="CharacterEllipsis"/>
             </DockPanel>

@@ -182,36 +182,42 @@ public partial class MainWindow : Window
     /// </summary>
     private void SavePresets()
     {
-        // 現在のプリセットデータをconfigに反映
+        // 現在のプリセットデータをconfigに反映（既存のCategoryを保持）
         if (!string.IsNullOrEmpty(_currentPreset))
         {
+            var existing = _presets.GetValueOrDefault(_currentPreset);
             _presets[_currentPreset] = new PresetData
             {
                 Actions = _actions.Select(a => a.Clone()).ToList(),
                 SourceFolders = new List<string>(_sourceFolders),
-                TrashFolder = _trashFolder
+                TrashFolder = _trashFolder,
+                Category = existing?.Category ?? ""
             };
         }
         _config.Presets = _presets;
 
         if (!string.IsNullOrEmpty(_extractCurrentPreset))
         {
+            var existing = _extractPresets.GetValueOrDefault(_extractCurrentPreset);
             _extractPresets[_extractCurrentPreset] = new PresetData
             {
                 Actions = _extractActions.Select(a => a.Clone()).ToList(),
                 SourceFolders = new List<string>(_extractSourceFolders),
-                TrashFolder = _extractTrashFolder
+                TrashFolder = _extractTrashFolder,
+                Category = existing?.Category ?? ""
             };
         }
         _config.ExtractPresets = _extractPresets;
 
         if (!string.IsNullOrEmpty(_videoCurrentPreset))
         {
+            var existing = _videoPresets.GetValueOrDefault(_videoCurrentPreset);
             _videoPresets[_videoCurrentPreset] = new PresetData
             {
                 Actions = _videoActions.Select(a => a.Clone()).ToList(),
                 VideoFolders = new List<string>(_videoFolders),
-                TrashFolder = _videoTrashFolder
+                TrashFolder = _videoTrashFolder,
+                Category = existing?.Category ?? ""
             };
         }
         _config.VideoPresets = _videoPresets;
@@ -312,12 +318,12 @@ public partial class MainWindow : Window
         }
 
         // Preset
-        BuildPresetSection(_currentPreset,
-            () => SaveCurrentPreset(ref _currentPreset, _presets, _actions, _sourceFolders, _trashFolder),
+        BuildPresetSection(_currentPreset, _presets,
+            (name) => { _currentPreset = name; LoadPreset(name, _presets, ref _actions, ref _sourceFolders, ref _trashFolder); SaveStateOnly(); RebuildSidebar(); },
             () => ManagePresets(ref _currentPreset, ref _presets, ref _actions, ref _sourceFolders, ref _trashFolder));
 
         // Settings button
-        var settingsBtn = CreateSidebarButton("⚙ 設定", () => OpenSettings(
+        var settingsBtn = CreateSidebarButton("⚙ プリセット設定", () => OpenSettings(
             _actions, _sourceFolders, _trashFolder, "ソースフォルダ", false,
             (r) => { _actions = r.Actions; _sourceFolders = r.Folders; _trashFolder = r.TrashFolder; }));
         settingsBtn.Margin = new Thickness(0, 4, 0, 4);
@@ -348,7 +354,7 @@ public partial class MainWindow : Window
         {
             Text = string.IsNullOrEmpty(_extractOutputFolder) ? "(未設定)" : _extractOutputFolder,
             Foreground = Theme.SubtextBrush,
-            FontSize = 10,
+            FontSize = 14,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 200
@@ -369,12 +375,12 @@ public partial class MainWindow : Window
         AddSidebarSeparator();
 
         // Preset
-        BuildPresetSection(_extractCurrentPreset,
-            () => SaveCurrentPreset(ref _extractCurrentPreset, _extractPresets, _extractActions, _extractSourceFolders, _extractTrashFolder),
+        BuildPresetSection(_extractCurrentPreset, _extractPresets,
+            (name) => { _extractCurrentPreset = name; LoadPreset(name, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder); SaveStateOnly(); RebuildSidebar(); },
             () => ManagePresets(ref _extractCurrentPreset, ref _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder));
 
         // Settings button
-        var settingsBtn = CreateSidebarButton("⚙ 設定", () => OpenSettings(
+        var settingsBtn = CreateSidebarButton("⚙ プリセット設定", () => OpenSettings(
             _extractActions, _extractSourceFolders, _extractTrashFolder, "ソースフォルダ", false,
             (r) => { _extractActions = r.Actions; _extractSourceFolders = r.Folders; _extractTrashFolder = r.TrashFolder; }));
         settingsBtn.Margin = new Thickness(0, 4, 0, 4);
@@ -412,14 +418,14 @@ public partial class MainWindow : Window
         AddSidebarSeparator();
 
         // Preset
-        BuildPresetSection(_videoCurrentPreset,
-            () => SaveCurrentPreset(ref _videoCurrentPreset, _videoPresets, _videoActions, _videoFolders, _videoTrashFolder),
+        BuildPresetSection(_videoCurrentPreset, _videoPresets,
+            (name) => { _videoCurrentPreset = name; LoadPreset(name, _videoPresets, ref _videoActions, ref _videoFolders, ref _videoTrashFolder, isVideo: true); SaveStateOnly(); RebuildSidebar(); },
             () => ManagePresets(ref _videoCurrentPreset, ref _videoPresets, ref _videoActions, ref _videoFolders, ref _videoTrashFolder, isVideo: true));
 
         AddSidebarSeparator();
 
         // Settings button
-        var settingsBtn = CreateSidebarButton("⚙ 設定", () => OpenSettings(
+        var settingsBtn = CreateSidebarButton("⚙ プリセット設定", () => OpenSettings(
             _videoActions, _videoFolders, _videoTrashFolder, "動画フォルダ", true,
             (r) => { _videoActions = r.Actions; _videoFolders = r.Folders; _videoTrashFolder = r.TrashFolder; }));
         settingsBtn.Margin = new Thickness(0, 4, 0, 4);
@@ -449,7 +455,7 @@ public partial class MainWindow : Window
             Text = text,
             Foreground = Theme.TextBrush,
             FontFamily = new FontFamily(Theme.FontFamily),
-            FontSize = 12,
+            FontSize = 14,
             FontWeight = FontWeights.Bold,
             Margin = new Thickness(0, 4, 0, 4)
         });
@@ -462,7 +468,7 @@ public partial class MainWindow : Window
             Text = text,
             Foreground = Theme.SubtextBrush,
             FontFamily = new FontFamily(Theme.FontFamily),
-            FontSize = 10,
+            FontSize = 14,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 4)
         });
@@ -484,7 +490,7 @@ public partial class MainWindow : Window
         {
             Content = text,
             FontFamily = new FontFamily("Segoe UI Emoji, Yu Gothic UI"),
-            FontSize = 11,
+            FontSize = 13,
             Padding = new Thickness(6, 2, 6, 2),
             Margin = new Thickness(2),
             Cursor = Cursors.Hand,
@@ -501,40 +507,124 @@ public partial class MainWindow : Window
 
     // ======== PRESET SECTION ========
 
-    private void BuildPresetSection(string presetName, Action onSave, Action onManage)
+    private void BuildPresetSection(string presetName, Dictionary<string, PresetData> presets,
+        Action<string> onLoad, Action onManage)
     {
         AddSidebarLabel("プリセット");
-        AddSidebarText(string.IsNullOrEmpty(presetName) ? "(未ロード)" : presetName);
+
+        // 初期表示時: 現在のプリセットのカテゴリにタブを合わせる
+        if (_presetTabFilter == null && !string.IsNullOrEmpty(presetName)
+            && presets.TryGetValue(presetName, out var curPreset)
+            && !string.IsNullOrEmpty(curPreset.Category))
+        {
+            _presetTabFilter = curPreset.Category;
+        }
+        _presetTabFilter ??= "";
+
+        var categories = presets.Values
+            .Select(p => p.Category)
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        // Determine active tab from current preset's category
+        string activeTab = "";
+        if (!string.IsNullOrEmpty(presetName) && presets.TryGetValue(presetName, out var currentData))
+            activeTab = currentData.Category ?? "";
+
+        // Category tabs
+        if (categories.Count > 0)
+        {
+            var tabPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 2) };
+
+            foreach (var cat in categories)
+            {
+                var c = cat;
+                var tab = CreateTabButton(c, _presetTabFilter == c, () =>
+                {
+                    _presetTabFilter = c;
+                    RebuildSidebar();
+                });
+                tabPanel.Children.Add(tab);
+            }
+
+            // "すべて" tab at the end
+            var allTab = CreateTabButton("すべて", string.IsNullOrEmpty(_presetTabFilter), () =>
+            {
+                _presetTabFilter = "";
+                RebuildSidebar();
+            });
+            tabPanel.Children.Add(allTab);
+
+            LeftSidebar.Children.Add(tabPanel);
+        }
+
+        // Preset list filtered by active tab
+        var filteredPresets = string.IsNullOrEmpty(_presetTabFilter)
+            ? presets.Keys.ToList()
+            : presets.Where(p => p.Value.Category == _presetTabFilter).Select(p => p.Key).ToList();
+
+        var listBox = new System.Windows.Controls.ListBox
+        {
+            Background = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2a2a3e")),
+            Foreground = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#e2e8f0")),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3f3f5e")),
+            FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
+            FontSize = 14,
+            MaxHeight = 120,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+
+        foreach (var name in filteredPresets)
+        {
+            listBox.Items.Add(new ListBoxItem { Content = name, Tag = name });
+            if (name == presetName)
+                listBox.SelectedIndex = listBox.Items.Count - 1;
+        }
+
+        listBox.SelectionChanged += (_, _) =>
+        {
+            if (listBox.SelectedItem is ListBoxItem item && item.Tag is string name && name != presetName)
+                onLoad(name);
+        };
+
+        LeftSidebar.Children.Add(listBox);
 
         var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-        btnPanel.Children.Add(CreateSidebarButton("保存", onSave));
-        btnPanel.Children.Add(CreateSidebarButton("管理", onManage));
+        var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", onManage);
+        btnPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        btnPanel.Children.Add(manageBtn);
         LeftSidebar.Children.Add(btnPanel);
     }
 
-    private void SaveCurrentPreset(ref string currentPreset, Dictionary<string, PresetData> presets,
-        List<ActionItem> actions, List<string> folders, string trash)
-    {
-        if (string.IsNullOrEmpty(currentPreset))
-        {
-            var dlg = new InputDialog("プリセット名", "新しいプリセットの名前:");
-            if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.InputText))
-                currentPreset = dlg.InputText;
-            else
-                return;
-        }
+    private string? _presetTabFilter; // null=未初期化, ""=すべて
 
-        presets[currentPreset] = new PresetData
+    private Button CreateTabButton(string label, bool isActive, Action onClick)
+    {
+        var btn = new Button
         {
-            Actions = actions.Select(a => a.Clone()).ToList(),
-            SourceFolders = _mode == "video" ? [] : new List<string>(folders),
-            VideoFolders = _mode == "video" ? new List<string>(folders) : [],
-            TrashFolder = trash
+            Content = label,
+            Padding = new Thickness(6, 2, 6, 2),
+            Margin = new Thickness(0, 0, 2, 2),
+            FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
+            FontSize = 13,
+            Background = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(isActive ? "#7c3aed" : "#2a2a3e")),
+            Foreground = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#e2e8f0")),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3f3f5e")),
+            Cursor = Cursors.Hand
         };
-        SavePresets();
-        SetStatus($"プリセット「{currentPreset}」を保存しました");
-        RebuildSidebar();
+        btn.Click += (_, _) => onClick();
+        return btn;
     }
+
 
     private void ManagePresets(ref string currentPreset, ref Dictionary<string, PresetData> presets,
         ref List<ActionItem> actions, ref List<string> folders, ref string trash, bool isVideo = false)
@@ -543,13 +633,8 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true && dlg.Result != null)
         {
             presets = dlg.Result.Presets;
-            if (!string.IsNullOrEmpty(dlg.Result.Selected))
-            {
-                currentPreset = dlg.Result.Selected;
-                LoadPreset(currentPreset, presets, ref actions, ref folders, ref trash, isVideo);
-            }
-            // プリセット順序と選択のみ保存（プリセットデータには触らない）
-            SaveStateOnly();
+            // プリセットデータ（カテゴリ変更含む）と順序を保存
+            SavePresets();
             RebuildSidebar();
         }
     }
@@ -611,7 +696,7 @@ public partial class MainWindow : Window
                 Text = action.Copy ? " 複製" : " 移動",
                 Foreground = Theme.SubtextBrush,
                 FontFamily = new FontFamily(Theme.FontFamily),
-                FontSize = 10,
+                FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(2, 0, 0, 0)
             };
@@ -638,7 +723,7 @@ public partial class MainWindow : Window
                 Text = trashFolder,
                 Foreground = Theme.SubtextBrush,
                 FontFamily = new FontFamily(Theme.FontFamily),
-                FontSize = 10,
+                FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = 200
@@ -1615,7 +1700,7 @@ public partial class MainWindow : Window
             {
                 Text = $"#{entry.Start + 1}〜#{entry.End + 1} ({entry.End - entry.Start + 1}枚)",
                 Foreground = Theme.TextBrush,
-                FontSize = 11,
+                FontSize = 13,
                 FontWeight = FontWeights.Bold
             });
             var removeBtn = CreateSidebarButton("×", () =>
@@ -1659,7 +1744,7 @@ public partial class MainWindow : Window
         {
             Text = label,
             Foreground = Theme.SubtextBrush,
-            FontSize = 10,
+            FontSize = 14,
             Width = 30,
             VerticalAlignment = VerticalAlignment.Center
         });
@@ -1671,7 +1756,7 @@ public partial class MainWindow : Window
             Foreground = Theme.TextBrush,
             BorderBrush = Theme.BorderBrush,
             CaretBrush = Theme.TextBrush,
-            FontSize = 11,
+            FontSize = 13,
             Padding = new Thickness(4, 2, 4, 2)
         };
         tb.TextChanged += (_, _) => onChange(tb.Text);

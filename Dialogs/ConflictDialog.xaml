@@ -6,9 +6,9 @@
     <StackPanel Margin="16">
         <TextBlock x:Name="FileNameText" Foreground="#e2e8f0" FontFamily="Yu Gothic UI" FontSize="13"
                    FontWeight="Bold" TextWrapping="Wrap"/>
-        <TextBlock x:Name="SizeInfo" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="11"
+        <TextBlock x:Name="SizeInfo" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="13"
                    Margin="0,8,0,0" TextWrapping="Wrap"/>
-        <TextBlock x:Name="CompareText" Foreground="#f59e0b" FontFamily="Yu Gothic UI" FontSize="11"
+        <TextBlock x:Name="CompareText" Foreground="#f59e0b" FontFamily="Yu Gothic UI" FontSize="13"
                    Margin="0,4,0,16"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
