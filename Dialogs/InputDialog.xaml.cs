@@ -16,6 +16,12 @@ public partial class InputDialog : Window
         InputBox.Focus();
     }
 
+    private void InputBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter)
+            DialogResult = true;
+    }
+
     private void BtnOk_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = true;

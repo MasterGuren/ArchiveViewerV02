@@ -12,6 +12,8 @@
 
         <!-- Preset action buttons -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+            <TextBlock Text="プリセット:" Foreground="#94a3b8" FontFamily="Yu Gothic UI" FontSize="13"
+                       VerticalAlignment="Center" Margin="0,0,4,0"/>
             <Button Content="新規" Width="55" Padding="4" Margin="0,0,4,0" Click="BtnNew_Click"
                     Background="#2a2a3e" Foreground="#e2e8f0" BorderBrush="#3f3f5e"/>
             <Button Content="コピー" Width="55" Padding="4" Margin="0,0,4,0" Click="BtnCopy_Click"

@@ -512,14 +512,21 @@ public partial class MainWindow : Window
     {
         AddSidebarLabel("プリセット");
 
+        // モードごとのタブフィルタ
+        if (!_presetTabFilters.ContainsKey(_mode))
+            _presetTabFilters[_mode] = null;
+
+        var tabFilter = _presetTabFilters[_mode];
+
         // 初期表示時: 現在のプリセットのカテゴリにタブを合わせる
-        if (_presetTabFilter == null && !string.IsNullOrEmpty(presetName)
+        if (tabFilter == null && !string.IsNullOrEmpty(presetName)
             && presets.TryGetValue(presetName, out var curPreset)
             && !string.IsNullOrEmpty(curPreset.Category))
         {
-            _presetTabFilter = curPreset.Category;
+            tabFilter = curPreset.Category;
+            _presetTabFilters[_mode] = tabFilter;
         }
-        _presetTabFilter ??= "";
+        tabFilter ??= "";
 
         var categories = presets.Values
             .Select(p => p.Category)
@@ -541,18 +548,18 @@ public partial class MainWindow : Window
             foreach (var cat in categories)
             {
                 var c = cat;
-                var tab = CreateTabButton(c, _presetTabFilter == c, () =>
+                var tab = CreateTabButton(c, tabFilter == c, () =>
                 {
-                    _presetTabFilter = c;
+                    _presetTabFilters[_mode] = c;
                     RebuildSidebar();
                 });
                 tabPanel.Children.Add(tab);
             }
 
             // "すべて" tab at the end
-            var allTab = CreateTabButton("すべて", string.IsNullOrEmpty(_presetTabFilter), () =>
+            var allTab = CreateTabButton("すべて", string.IsNullOrEmpty(tabFilter), () =>
             {
-                _presetTabFilter = "";
+                _presetTabFilters[_mode] = "";
                 RebuildSidebar();
             });
             tabPanel.Children.Add(allTab);
@@ -561,9 +568,9 @@ public partial class MainWindow : Window
         }
 
         // Preset list filtered by active tab
-        var filteredPresets = string.IsNullOrEmpty(_presetTabFilter)
+        var filteredPresets = string.IsNullOrEmpty(tabFilter)
             ? presets.Keys.ToList()
-            : presets.Where(p => p.Value.Category == _presetTabFilter).Select(p => p.Key).ToList();
+            : presets.Where(p => p.Value.Category == tabFilter).Select(p => p.Key).ToList();
 
         var listBox = new System.Windows.Controls.ListBox
         {
@@ -592,17 +599,18 @@ public partial class MainWindow : Window
                 onLoad(name);
         };
 
+        if (listBox.SelectedIndex >= 0)
+            listBox.Loaded += (_, _) => listBox.ScrollIntoView(listBox.SelectedItem);
+
         LeftSidebar.Children.Add(listBox);
 
-        var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
         var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", onManage);
-        btnPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
-        btnPanel.Children.Add(manageBtn);
-        LeftSidebar.Children.Add(btnPanel);
+        manageBtn.Margin = new Thickness(0, 0, 0, 4);
+        LeftSidebar.Children.Add(manageBtn);
     }
 
-    private string? _presetTabFilter; // null=未初期化, ""=すべて
+    private Dictionary<string, string?> _presetTabFilters = new(); // mode -> filter (null=未初期化, ""=すべて)
 
     private Button CreateTabButton(string label, bool isActive, Action onClick)
     {
@@ -630,6 +638,7 @@ public partial class MainWindow : Window
         ref List<ActionItem> actions, ref List<string> folders, ref string trash, bool isVideo = false)
     {
         var dlg = new PresetManagerDialog(presets, currentPreset);
+        dlg.Owner = this;
         if (dlg.ShowDialog() == true && dlg.Result != null)
         {
             presets = dlg.Result.Presets;
@@ -967,6 +976,7 @@ public partial class MainWindow : Window
 
         UpdateSelectionVisuals();
         UpdateSelectionInfo();
+        GridScroller.ScrollToTop();
     }
 
     // ======== SELECTION ========
