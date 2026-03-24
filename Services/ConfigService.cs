@@ -101,6 +101,7 @@ public class ConfigService
         config.State.PresetOrder = [.. config.Presets.Keys];
         config.State.ExtractPresetOrder = [.. config.ExtractPresets.Keys];
         config.State.VideoPresetOrder = [.. config.VideoPresets.Keys];
+        config.State.ImagePresetOrder = [.. config.ImagePresets.Keys];
     }
 
     private static AppConfig MigrateLegacyConfig(JsonElement root)
@@ -135,6 +136,7 @@ public class ConfigService
         config.Presets["デフォルト"] = preset;
         config.ExtractPresets["デフォルト"] = preset.Clone();
         config.VideoPresets["デフォルト"] = preset.Clone();
+        config.ImagePresets["デフォルト"] = preset.Clone();
         return config;
     }
 
@@ -204,6 +206,8 @@ public class ConfigService
         config.State.ExtractCurrentPreset = "デフォルト";
         config.VideoPresets["デフォルト"] = defaultPreset.Clone();
         config.State.VideoCurrentPreset = "デフォルト";
+        config.ImagePresets["デフォルト"] = defaultPreset.Clone();
+        config.State.ImageCurrentPreset = "デフォルト";
         return config;
     }
 

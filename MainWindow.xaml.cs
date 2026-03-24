@@ -83,6 +83,15 @@ public partial class MainWindow : Window
     private List<string> _videoFolders = [];
     private string _videoTrashFolder = "";
 
+    // Image browse
+    private Dictionary<string, PresetData> _imagePresets = new();
+    private string _imageCurrentPreset = "";
+    private List<ActionItem> _imageActions = [];
+    private List<string> _imageSourceFolders = [];
+    private string _imageTrashFolder = "";
+    private string? _imageFolderPath;
+    private List<string> _imagePaths = [];
+
     // Loading
     private CancellationTokenSource? _loadCts;
 
@@ -125,6 +134,9 @@ public partial class MainWindow : Window
         LoadPreset(_currentPreset, _presets, ref _actions, ref _sourceFolders, ref _trashFolder);
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
         LoadPreset(_videoCurrentPreset, _videoPresets, ref _videoActions, ref _videoFolders, ref _videoTrashFolder, isVideo: true);
+        _imagePresets = _config.ImagePresets;
+        _imageCurrentPreset = _config.State.ImageCurrentPreset;
+        LoadPreset(_imageCurrentPreset, _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder);
     }
 
     private void LoadPreset(string name, Dictionary<string, PresetData> presets,
@@ -166,6 +178,8 @@ public partial class MainWindow : Window
         _config.State.PresetOrder = [.. _presets.Keys];
         _config.State.ExtractPresetOrder = [.. _extractPresets.Keys];
         _config.State.VideoPresetOrder = [.. _videoPresets.Keys];
+        _config.State.ImageCurrentPreset = _imageCurrentPreset;
+        _config.State.ImagePresetOrder = [.. _imagePresets.Keys];
     }
 
     /// <summary>
@@ -222,6 +236,19 @@ public partial class MainWindow : Window
         }
         _config.VideoPresets = _videoPresets;
 
+        if (!string.IsNullOrEmpty(_imageCurrentPreset) && _imagePresets.ContainsKey(_imageCurrentPreset))
+        {
+            var existing = _imagePresets[_imageCurrentPreset];
+            _imagePresets[_imageCurrentPreset] = new PresetData
+            {
+                Actions = _imageActions.Select(a => a.Clone()).ToList(),
+                SourceFolders = new List<string>(_imageSourceFolders),
+                TrashFolder = _imageTrashFolder,
+                Category = existing.Category
+            };
+        }
+        _config.ImagePresets = _imagePresets;
+
         SyncStateToConfig();
         ConfigService.SavePresets(_config);
     }
@@ -242,6 +269,7 @@ public partial class MainWindow : Window
         BtnBrowse.IsChecked = mode == "browse";
         BtnExtract.IsChecked = mode == "extract";
         BtnVideo.IsChecked = mode == "video";
+        BtnImage.IsChecked = mode == "image";
 
         // Show/hide extract UI
         bool isExtract = mode == "extract";
@@ -263,7 +291,40 @@ public partial class MainWindow : Window
             VideoOverlay.Visibility = isVideo && _videoPath != null ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        // Show grid for browse/extract
+        // Clear state when switching between image and archive modes
+        bool isImage = mode == "image";
+        bool isBrowseOrExtract = mode == "browse" || mode == "extract";
+        if (isImage && _archivePath != null)
+        {
+            // Switching to image mode: clear archive data
+            _archivePath = null;
+            _imageNames.Clear();
+            _thumbData = null;
+            _thumbnails = null;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            _selectStart = null;
+            _selectEnd = null;
+            _folderArchives.Clear();
+            _currentArchiveIndex = -1;
+            if (_viewerOpen) CloseViewer();
+        }
+        else if (isBrowseOrExtract && _imageFolderPath != null)
+        {
+            // Switching to browse/extract: clear image data
+            _imageFolderPath = null;
+            _imagePaths.Clear();
+            _imageNames.Clear();
+            _thumbData = null;
+            _thumbnails = null;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            _selectStart = null;
+            _selectEnd = null;
+            if (_viewerOpen) CloseViewer();
+        }
+
+        // Show grid for browse/extract/image
         GridScroller.Visibility = isVideo ? Visibility.Collapsed : Visibility.Visible;
 
         if (isVideo)
@@ -273,6 +334,15 @@ public partial class MainWindow : Window
             {
                 var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
                 if (tb != null) tb.Text = "動画ファイルを「開く」で選択";
+            }
+        }
+        else if (mode == "image")
+        {
+            EmptyMessage.Visibility = _imageFolderPath != null ? Visibility.Collapsed : Visibility.Visible;
+            if (EmptyMessage.Visibility == Visibility.Visible)
+            {
+                var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
+                if (tb != null) tb.Text = "画像フォルダを「開く」で選択またはドロップ";
             }
         }
         else
@@ -286,6 +356,7 @@ public partial class MainWindow : Window
     private void BtnBrowse_Click(object sender, RoutedEventArgs e) => SwitchMode("browse");
     private void BtnExtract_Click(object sender, RoutedEventArgs e) => SwitchMode("extract");
     private void BtnVideo_Click(object sender, RoutedEventArgs e) => SwitchMode("video");
+    private void BtnImage_Click(object sender, RoutedEventArgs e) => SwitchMode("image");
 
     // ======== SIDEBAR ========
 
@@ -303,6 +374,9 @@ public partial class MainWindow : Window
                 break;
             case "video":
                 BuildVideoSidebar();
+                break;
+            case "image":
+                BuildImageSidebar();
                 break;
         }
     }
@@ -445,6 +519,44 @@ public partial class MainWindow : Window
 
         AddSidebarSeparator();
         BuildTrashDisplay(_videoTrashFolder);
+    }
+
+    private void BuildImageSidebar()
+    {
+        // Working folder
+        if (_imageFolderPath != null)
+        {
+            AddSidebarLabel("画像フォルダ");
+            AddSidebarText(_imageFolderPath);
+            AddSidebarSeparator();
+        }
+
+        // Preset
+        BuildPresetSection(_imageCurrentPreset, _imagePresets,
+            (name) => { _imageCurrentPreset = name; LoadPreset(name, _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder); SaveStateOnly(); RebuildSidebar(); },
+            () => ManagePresets(ref _imageCurrentPreset, ref _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder));
+
+        // Settings button
+        var settingsBtn = CreateSidebarButton("⚙ プリセット設定", () => OpenSettings(
+            _imageActions, _imageSourceFolders, _imageTrashFolder, "画像フォルダ", false,
+            (r) => { _imageActions = r.Actions; _imageSourceFolders = r.Folders; _imageTrashFolder = r.TrashFolder; }));
+        settingsBtn.Margin = new Thickness(0, 4, 0, 4);
+        LeftSidebar.Children.Add(settingsBtn);
+
+        AddSidebarSeparator();
+
+        // Actions
+        BuildActionButtons(_imageActions, (a) => ExecuteImageAction(a));
+
+        AddSidebarSeparator();
+
+        // Source folders
+        BuildFolderButtons("画像フォルダ", _imageSourceFolders,
+            (f) => LoadImageFolder(f),
+            (f) => LoadImageFolder(f));
+
+        AddSidebarSeparator();
+        BuildTrashDisplay(_imageTrashFolder);
     }
 
     // Sidebar helpers
@@ -797,6 +909,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_mode == "image")
+        {
+            var fbd = new System.Windows.Forms.FolderBrowserDialog();
+            if (fbd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                LoadImageFolder(fbd.SelectedPath);
+            return;
+        }
+
         var dlg = new OpenFileDialog
         {
             Filter = "アーカイブ|*.zip;*.rar;*.7z;*.cbz;*.cbr|すべて|*.*"
@@ -947,6 +1067,122 @@ public partial class MainWindow : Window
         }
     }
 
+    // ======== IMAGE FOLDER LOADING ========
+
+    private async void LoadImageFolder(string folderPath)
+    {
+        _loadCts?.Cancel();
+        _loadCts = new CancellationTokenSource();
+        var ct = _loadCts.Token;
+
+        _imageFolderPath = folderPath;
+        _archivePath = null;
+        _selectStart = null;
+        _selectEnd = null;
+        _selectionConfirmed = false;
+
+        EmptyMessage.Visibility = Visibility.Collapsed;
+        ProgressOverlay.Visibility = Visibility.Visible;
+        ViewerOverlay.Visibility = Visibility.Collapsed;
+        _viewerOpen = false;
+        ThumbnailGrid.Children.Clear();
+        _cards.Clear();
+
+        UpdateNavigation();
+        SetStatus($"読み込み中: {Path.GetFileName(folderPath)}");
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                // Step 1: Enumerate and sort image files
+                var files = Directory.GetFiles(folderPath)
+                    .Where(f => Theme.ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .ToList();
+
+                if (ct.IsCancellationRequested) return;
+
+                // Sort
+                switch (_folderSort)
+                {
+                    case "name":
+                        files.Sort((a, b) => NaturalStringComparer.Instance.Compare(
+                            Path.GetFileName(a), Path.GetFileName(b)));
+                        break;
+                    case "date":
+                        files.Sort((a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
+                        break;
+                    case "random":
+                        var rng = new Random();
+                        for (int i = files.Count - 1; i > 0; i--)
+                        {
+                            int j = rng.Next(i + 1);
+                            (files[i], files[j]) = (files[j], files[i]);
+                        }
+                        break;
+                }
+
+                var names = files.Select(f => Path.GetFileName(f)).ToList();
+
+                Dispatcher.Invoke(() =>
+                {
+                    _imagePaths = files;
+                    _imageNames = names;
+                    LoadProgress.Maximum = files.Count;
+                });
+
+                // Step 2: Generate thumbnails in parallel
+                var data = new byte[]?[files.Count];
+                int count = 0;
+                var parallelOpts = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8),
+                    CancellationToken = ct
+                };
+
+                Parallel.For(0, files.Count, parallelOpts, i =>
+                {
+                    try
+                    {
+                        var raw = File.ReadAllBytes(files[i]);
+                        data[i] = ThumbnailService.GenerateThumbnailBytes(raw);
+                    }
+                    catch { data[i] = null; }
+
+                    var c = Interlocked.Increment(ref count);
+                    if (c % 5 == 0 || c == files.Count)
+                    {
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            LoadProgress.Value = c;
+                            ProgressText.Text = $"読み込み中... {c}/{files.Count}";
+                        });
+                    }
+                });
+
+                if (ct.IsCancellationRequested) return;
+
+                Dispatcher.Invoke(() =>
+                {
+                    _thumbData = data;
+                    BuildThumbnails();
+                    RebuildGrid();
+                    ProgressOverlay.Visibility = Visibility.Collapsed;
+                    SetStatus($"{Path.GetFileName(folderPath)} — {names.Count}枚");
+                    TxtFileSize.Text = "";
+                    UpdateNavigation();
+                });
+            }, ct);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            ProgressOverlay.Visibility = Visibility.Collapsed;
+            SetStatus($"エラー: {ex.Message}");
+            ShowError($"画像フォルダの読み込みに失敗しました:\n{ex.Message}");
+        }
+    }
+
     private void BuildThumbnails()
     {
         if (_thumbData == null) return;
@@ -989,7 +1225,14 @@ public partial class MainWindow : Window
 
     private void OnCardClicked(int index, MouseButtonEventArgs e)
     {
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && _selectStart.HasValue)
+        if (_mode == "image")
+        {
+            // Image mode: single selection only
+            _selectStart = index;
+            _selectEnd = null;
+            _selectionConfirmed = false;
+        }
+        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) && _selectStart.HasValue)
         {
             _selectEnd = index;
             _selectionConfirmed = true;
@@ -1075,9 +1318,18 @@ public partial class MainWindow : Window
 
     private void OpenViewer(int index)
     {
-        if (_thumbData == null || _archivePath == null) return;
+        if (_mode == "image")
+        {
+            if (_imageFolderPath == null || _imagePaths.Count == 0) return;
+        }
+        else
+        {
+            if (_thumbData == null || _archivePath == null) return;
+        }
         _viewerIndex = index;
         _viewerOpen = true;
+        HeaderBar.Visibility = Visibility.Collapsed;
+        HeaderRow.Height = new GridLength(0);
         ViewerOverlay.Visibility = Visibility.Visible;
         LoadViewerImage(index);
         ViewerSlider.Maximum = _imageNames.Count - 1;
@@ -1086,25 +1338,62 @@ public partial class MainWindow : Window
 
     private void LoadViewerImage(int index)
     {
-        if (_archivePath == null) return;
-        try
+        byte[]? data = null;
+        string fileName;
+        string containerName;
+
+        if (_mode == "image")
         {
-            using var archive = ArchiveFactory.Open(_archivePath);
-            var data = archive.ReadEntry(_imageNames[index]);
-            var img = ThumbnailService.LoadFullImage(data);
-            ViewerImage.Source = img;
-            ViewerInfo.Text = $"{Path.GetFileName(_archivePath)} — {Path.GetFileName(_imageNames[index])} ({index + 1}/{_imageNames.Count})";
+            if (_imageFolderPath == null || index < 0 || index >= _imagePaths.Count) return;
+            try { data = File.ReadAllBytes(_imagePaths[index]); }
+            catch (Exception ex) { SetStatus($"画像読み込みエラー: {ex.Message}"); return; }
+            fileName = _imageNames[index];
+            containerName = Path.GetFileName(_imageFolderPath);
         }
-        catch (Exception ex)
+        else
         {
-            SetStatus($"画像読み込みエラー: {ex.Message}");
+            if (_archivePath == null) return;
+            try
+            {
+                using var archive = ArchiveFactory.Open(_archivePath);
+                data = archive.ReadEntry(_imageNames[index]);
+            }
+            catch (Exception ex) { SetStatus($"画像読み込みエラー: {ex.Message}"); return; }
+            fileName = Path.GetFileName(_imageNames[index]);
+            containerName = Path.GetFileName(_archivePath);
         }
+
+        if (data == null) return;
+
+        // GIF animation support
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (ext == ".gif")
+        {
+            var stream = new MemoryStream(data);
+            var bitmapImage = new BitmapImage();
+            bitmapImage.BeginInit();
+            bitmapImage.StreamSource = stream;
+            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+            bitmapImage.EndInit();
+            bitmapImage.Freeze();
+            WpfAnimatedGif.ImageBehavior.SetAnimatedSource(ViewerImage, bitmapImage);
+        }
+        else
+        {
+            WpfAnimatedGif.ImageBehavior.SetAnimatedSource(ViewerImage, null);
+            ViewerImage.Source = ThumbnailService.LoadFullImage(data);
+        }
+
+        ViewerInfo.Text = $"{containerName} — {fileName} ({index + 1}/{_imageNames.Count})";
     }
 
     private void CloseViewer()
     {
         _viewerOpen = false;
+        WpfAnimatedGif.ImageBehavior.SetAnimatedSource(ViewerImage, null);
         ViewerOverlay.Visibility = Visibility.Collapsed;
+        HeaderBar.Visibility = Visibility.Visible;
+        HeaderRow.Height = new GridLength(56);
     }
 
     private void ViewerOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1240,6 +1529,15 @@ public partial class MainWindow : Window
 
     private void UpdateNavigation()
     {
+        if (_mode == "image")
+        {
+            TxtPrevFile.Text = "";
+            TxtNextFile.Text = "";
+            TxtCurrentFile.Text = _imageFolderPath != null ? Path.GetFileName(_imageFolderPath) : "";
+            TxtFilePosition.Text = _imageNames.Count > 0 ? $"({_imageNames.Count}枚)" : "";
+            return;
+        }
+
         if (_folderArchives.Count == 0 || _currentArchiveIndex < 0)
         {
             TxtPrevFile.Text = "";
@@ -1258,6 +1556,12 @@ public partial class MainWindow : Window
 
     private void NavigateFile(int delta)
     {
+        if (_mode == "image")
+        {
+            NavigateImageInGrid(delta);
+            return;
+        }
+
         if (_mode == "video")
         {
             NavigateVideo(delta);
@@ -1270,6 +1574,27 @@ public partial class MainWindow : Window
         {
             LoadArchive(_folderArchives[newIdx], keepViewer: _viewerOpen);
         }
+    }
+
+    private void NavigateImageInGrid(int delta)
+    {
+        if (_cards.Count == 0) return;
+
+        // If viewer is open, navigate in viewer
+        if (_viewerOpen)
+        {
+            ViewerNavigate(delta);
+            return;
+        }
+
+        int current = _selectStart ?? -1;
+        int newIdx = Math.Clamp(current + delta, 0, _cards.Count - 1);
+        _selectStart = newIdx;
+        _selectEnd = null;
+        _selectionConfirmed = false;
+        UpdateSelectionVisuals();
+        UpdateSelectionInfo();
+        _cards[newIdx].BringIntoView();
     }
 
     private void BtnPrev_Click(object sender, RoutedEventArgs e) => NavigateFile(-1);
@@ -1307,7 +1632,11 @@ public partial class MainWindow : Window
 
     private void RebuildFileListForSort(bool forceReshuffle = false)
     {
-        if (_mode == "video")
+        if (_mode == "image")
+        {
+            if (_imageFolderPath != null) LoadImageFolder(_imageFolderPath);
+        }
+        else if (_mode == "video")
         {
             if (_videoPath != null) { BuildVideoFileList(forceReshuffle); UpdateVideoNavigation(); }
         }
@@ -1357,6 +1686,101 @@ public partial class MainWindow : Window
     }
 
     // ======== ACTIONS ========
+
+    private async void ExecuteImageAction(ActionItem action)
+    {
+        if (_imageFolderPath == null || !_selectStart.HasValue || string.IsNullOrEmpty(action.Folder)) return;
+        int idx = _viewerOpen ? _viewerIndex : _selectStart.Value;
+        if (idx < 0 || idx >= _imagePaths.Count) return;
+
+        var src = _imagePaths[idx];
+        var dst = Path.Combine(action.Folder, Path.GetFileName(src));
+
+        try
+        {
+            Directory.CreateDirectory(action.Folder);
+
+            if (File.Exists(dst))
+            {
+                var resolution = ResolveConflict(src, dst);
+                if (resolution == "skip") return;
+                if (resolution == "rename") dst = MakeUniquePath(dst);
+            }
+
+            var verb = action.Copy ? "コピー" : "移動";
+            var msg = $"{verb}中: {Path.GetFileName(src)}...";
+            if (action.Copy)
+                await CopyFileWithProgress(src, dst, msg);
+            else
+                await MoveFileWithProgress(src, dst, msg);
+            File.SetLastWriteTime(dst, DateTime.Now);
+
+            SetStatus($"{verb}しました: {Path.GetFileName(dst)}");
+            if (!action.Copy) AfterImageAction(idx);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"ファイル操作に失敗しました:\n{ex.Message}");
+        }
+    }
+
+    private void AfterImageAction(int removedIndex)
+    {
+        _imageNames.RemoveAt(removedIndex);
+        _imagePaths.RemoveAt(removedIndex);
+
+        // Shrink _thumbData array
+        if (_thumbData != null && removedIndex < _thumbData.Length)
+        {
+            var newData = new byte[]?[_thumbData.Length - 1];
+            for (int i = 0, j = 0; i < _thumbData.Length; i++)
+            {
+                if (i == removedIndex) continue;
+                newData[j++] = _thumbData[i];
+            }
+            _thumbData = newData;
+        }
+
+        if (_imageNames.Count == 0)
+        {
+            _imageFolderPath = null;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            _thumbData = null;
+            _thumbnails = null;
+            EmptyMessage.Visibility = Visibility.Visible;
+            var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
+            if (tb != null) tb.Text = "画像フォルダを「開く」で選択またはドロップ";
+            _selectStart = null;
+            if (_viewerOpen) CloseViewer();
+            UpdateNavigation();
+            return;
+        }
+
+        BuildThumbnails();
+        RebuildGrid();
+
+        int newIdx = Math.Clamp(removedIndex, 0, _imageNames.Count - 1);
+        _selectStart = newIdx;
+        _selectEnd = null;
+        UpdateSelectionVisuals();
+        UpdateSelectionInfo();
+        _cards[newIdx].BringIntoView();
+
+        UpdateNavigation();
+        SetStatus($"{Path.GetFileName(_imageFolderPath)} — {_imageNames.Count}枚");
+
+        // If viewer is open, show next image
+        if (_viewerOpen)
+        {
+            _viewerIndex = newIdx;
+            ViewerSlider.Maximum = _imageNames.Count - 1;
+            _sliderUpdating = true;
+            ViewerSlider.Value = newIdx;
+            _sliderUpdating = false;
+            LoadViewerImage(newIdx);
+        }
+    }
 
     private async void ExecuteAction(ActionItem action)
     {
@@ -2209,6 +2633,13 @@ public partial class MainWindow : Window
                     BtnClearSelection_Click(sender, e);
                 e.Handled = true;
                 break;
+            case Key.Delete:
+                if (_mode == "image" && _selectStart.HasValue && !string.IsNullOrEmpty(_imageTrashFolder))
+                {
+                    ExecuteImageAction(new ActionItem { Label = "ゴミ箱", Folder = _imageTrashFolder, Copy = false });
+                    e.Handled = true;
+                }
+                break;
         }
     }
 
@@ -2262,10 +2693,22 @@ public partial class MainWindow : Window
         var file = files[0];
         var ext = Path.GetExtension(file).ToLowerInvariant();
 
+        if (Directory.Exists(file))
+        {
+            if (_mode != "image") SwitchMode("image");
+            LoadImageFolder(file);
+            return;
+        }
+
         if (_mode == "video" || Theme.VideoExtensions.Contains(ext))
         {
             if (_mode != "video") SwitchMode("video");
             PlayVideo(file);
+        }
+        else if (Theme.ImageExtensions.Contains(ext))
+        {
+            if (_mode != "image") SwitchMode("image");
+            LoadImageFolder(Path.GetDirectoryName(file)!);
         }
         else if (Theme.ArchiveExtensions.Contains(ext))
         {

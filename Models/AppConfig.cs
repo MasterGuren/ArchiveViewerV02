@@ -14,6 +14,9 @@ public class AppConfig
     [JsonPropertyName("video_presets")]
     public Dictionary<string, PresetData> VideoPresets { get; set; } = new();
 
+    [JsonPropertyName("image_presets")]
+    public Dictionary<string, PresetData> ImagePresets { get; set; } = new();
+
     // === 状態（順序・選択・UI設定。自由に保存OK） ===
     [JsonPropertyName("state")]
     public AppState State { get; set; } = new();
@@ -38,6 +41,12 @@ public class AppState
 
     [JsonPropertyName("video_preset_order")]
     public List<string> VideoPresetOrder { get; set; } = [];
+
+    [JsonPropertyName("image_current_preset")]
+    public string ImageCurrentPreset { get; set; } = "";
+
+    [JsonPropertyName("image_preset_order")]
+    public List<string> ImagePresetOrder { get; set; } = [];
 
     [JsonPropertyName("extract_output_folder")]
     public string ExtractOutputFolder { get; set; } = "";
