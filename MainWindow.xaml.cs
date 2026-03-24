@@ -1977,7 +1977,7 @@ public partial class MainWindow : Window
         int idx = Math.Clamp(oldIdx, 0, _folderArchives.Count - 1);
         _archivePath = _folderArchives[idx];
         _currentArchiveIndex = idx;
-        LoadArchive(_folderArchives[idx]);
+        LoadArchive(_folderArchives[idx], keepViewer: _viewerOpen);
     }
 
     private void AfterVideoAction()
