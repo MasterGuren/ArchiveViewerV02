@@ -5,14 +5,14 @@ namespace ArchiveViewer;
 public static class Theme
 {
     // Main colors
-    public static readonly Color BgColor = (Color)ColorConverter.ConvertFromString("#1e1e2e")!;
-    public static readonly Color PanelColor = (Color)ColorConverter.ConvertFromString("#2a2a3e")!;
-    public static readonly Color AccentColor = (Color)ColorConverter.ConvertFromString("#7c3aed")!;
-    public static readonly Color SelectColor = (Color)ColorConverter.ConvertFromString("#a855f7")!;
-    public static readonly Color HoverColor = (Color)ColorConverter.ConvertFromString("#3a3a4e")!;
-    public static readonly Color TextColor = (Color)ColorConverter.ConvertFromString("#e2e8f0")!;
-    public static readonly Color SubtextColor = (Color)ColorConverter.ConvertFromString("#94a3b8")!;
-    public static readonly Color BorderColor = (Color)ColorConverter.ConvertFromString("#3f3f5e")!;
+    public static readonly Color BgColor = (Color)ColorConverter.ConvertFromString("#3d1a30")!;
+    public static readonly Color PanelColor = (Color)ColorConverter.ConvertFromString("#502842")!;
+    public static readonly Color AccentColor = (Color)ColorConverter.ConvertFromString("#e91e63")!;
+    public static readonly Color SelectColor = (Color)ColorConverter.ConvertFromString("#f06292")!;
+    public static readonly Color HoverColor = (Color)ColorConverter.ConvertFromString("#603050")!;
+    public static readonly Color TextColor = (Color)ColorConverter.ConvertFromString("#fce4ec")!;
+    public static readonly Color SubtextColor = (Color)ColorConverter.ConvertFromString("#d4a0b0")!;
+    public static readonly Color BorderColor = (Color)ColorConverter.ConvertFromString("#7a4868")!;
     public static readonly Color RangeSelectColor = (Color)ColorConverter.ConvertFromString("#22c55e")!;
 
     // Brushes

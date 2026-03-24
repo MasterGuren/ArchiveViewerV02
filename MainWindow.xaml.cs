@@ -182,42 +182,42 @@ public partial class MainWindow : Window
     /// </summary>
     private void SavePresets()
     {
-        // 現在のプリセットデータをconfigに反映（既存のCategoryを保持）
-        if (!string.IsNullOrEmpty(_currentPreset))
+        // 現在のプリセットデータをconfigに反映（既存のCategoryを保持、存在するプリセットのみ）
+        if (!string.IsNullOrEmpty(_currentPreset) && _presets.ContainsKey(_currentPreset))
         {
-            var existing = _presets.GetValueOrDefault(_currentPreset);
+            var existing = _presets[_currentPreset];
             _presets[_currentPreset] = new PresetData
             {
                 Actions = _actions.Select(a => a.Clone()).ToList(),
                 SourceFolders = new List<string>(_sourceFolders),
                 TrashFolder = _trashFolder,
-                Category = existing?.Category ?? ""
+                Category = existing.Category
             };
         }
         _config.Presets = _presets;
 
-        if (!string.IsNullOrEmpty(_extractCurrentPreset))
+        if (!string.IsNullOrEmpty(_extractCurrentPreset) && _extractPresets.ContainsKey(_extractCurrentPreset))
         {
-            var existing = _extractPresets.GetValueOrDefault(_extractCurrentPreset);
+            var existing = _extractPresets[_extractCurrentPreset];
             _extractPresets[_extractCurrentPreset] = new PresetData
             {
                 Actions = _extractActions.Select(a => a.Clone()).ToList(),
                 SourceFolders = new List<string>(_extractSourceFolders),
                 TrashFolder = _extractTrashFolder,
-                Category = existing?.Category ?? ""
+                Category = existing.Category
             };
         }
         _config.ExtractPresets = _extractPresets;
 
-        if (!string.IsNullOrEmpty(_videoCurrentPreset))
+        if (!string.IsNullOrEmpty(_videoCurrentPreset) && _videoPresets.ContainsKey(_videoCurrentPreset))
         {
-            var existing = _videoPresets.GetValueOrDefault(_videoCurrentPreset);
+            var existing = _videoPresets[_videoCurrentPreset];
             _videoPresets[_videoCurrentPreset] = new PresetData
             {
                 Actions = _videoActions.Select(a => a.Clone()).ToList(),
                 VideoFolders = new List<string>(_videoFolders),
                 TrashFolder = _videoTrashFolder,
-                Category = existing?.Category ?? ""
+                Category = existing.Category
             };
         }
         _config.VideoPresets = _videoPresets;
@@ -642,6 +642,12 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true && dlg.Result != null)
         {
             presets = dlg.Result.Presets;
+            // カレントプリセットが変わった場合（リネーム・削除）に追従
+            if (currentPreset != dlg.Result.CurrentPreset)
+            {
+                currentPreset = dlg.Result.CurrentPreset;
+                LoadPreset(currentPreset, presets, ref actions, ref folders, ref trash, isVideo);
+            }
             // プリセットデータ（カテゴリ変更含む）と順序を保存
             SavePresets();
             RebuildSidebar();

@@ -8,11 +8,13 @@ namespace ArchiveViewer.Dialogs;
 public class PresetManagerResult
 {
     public Dictionary<string, PresetData> Presets { get; set; } = new();
+    public string CurrentPreset { get; set; } = "";
 }
 
 public partial class PresetManagerDialog : Window
 {
     private readonly Dictionary<string, PresetData> _presets;
+    private string _currentPreset;
     private List<string> _order;
     private List<string> _categories = [];
     public PresetManagerResult? Result { get; private set; }
@@ -21,6 +23,7 @@ public partial class PresetManagerDialog : Window
     {
         InitializeComponent();
         _presets = presets.ToDictionary(p => p.Key, p => p.Value.Clone());
+        _currentPreset = currentPreset;
         _order = [.. _presets.Keys];
 
         // Collect existing categories
@@ -106,16 +109,17 @@ public partial class PresetManagerDialog : Window
         if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.InputText))
         {
             var name = dlg.InputText;
-            if (!_presets.ContainsKey(name))
+            if (_presets.ContainsKey(name))
             {
-                var preset = new PresetData();
-                // If a category is selected, assign it
-                var cat = GetSelectedCategoryName();
-                if (cat != null) preset.Category = cat;
-                _presets[name] = preset;
-                _order.Add(name);
-                RefreshTree(name);
+                MessageBox.Show($"「{name}」は既に存在します。", "新規プリセット");
+                return;
             }
+            var preset = new PresetData();
+            var cat = GetSelectedCategoryName();
+            if (cat != null) preset.Category = cat;
+            _presets[name] = preset;
+            _order.Add(name);
+            RefreshTree(name);
         }
     }
 
@@ -128,12 +132,14 @@ public partial class PresetManagerDialog : Window
         if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.InputText))
         {
             var name = dlg.InputText;
-            if (!_presets.ContainsKey(name))
+            if (_presets.ContainsKey(name))
             {
-                _presets[name] = _presets[srcName].Clone();
-                _order.Add(name);
-                RefreshTree(name);
+                MessageBox.Show($"「{name}」は既に存在します。", "コピー");
+                return;
             }
+            _presets[name] = _presets[srcName].Clone();
+            _order.Add(name);
+            RefreshTree(name);
         }
     }
 
@@ -146,14 +152,18 @@ public partial class PresetManagerDialog : Window
         if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.InputText))
         {
             var newName = dlg.InputText;
-            if (newName != oldName && !_presets.ContainsKey(newName))
+            if (newName == oldName) return;
+            if (_presets.ContainsKey(newName))
             {
-                _presets[newName] = _presets[oldName];
-                _presets.Remove(oldName);
-                var idx = _order.IndexOf(oldName);
-                if (idx >= 0) _order[idx] = newName;
-                RefreshTree(newName);
+                MessageBox.Show($"「{newName}」は既に存在します。", "名前変更");
+                return;
             }
+            _presets[newName] = _presets[oldName];
+            _presets.Remove(oldName);
+            var idx = _order.IndexOf(oldName);
+            if (idx >= 0) _order[idx] = newName;
+            if (_currentPreset == oldName) _currentPreset = newName;
+            RefreshTree(newName);
         }
     }
 
@@ -165,7 +175,9 @@ public partial class PresetManagerDialog : Window
         {
             _presets.Remove(name);
             _order.Remove(name);
-            RefreshTree();
+            if (_currentPreset == name)
+                _currentPreset = _order.FirstOrDefault() ?? "";
+            RefreshTree(_currentPreset);
         }
     }
 
@@ -269,7 +281,12 @@ public partial class PresetManagerDialog : Window
         foreach (var name in _order)
             ordered[name] = _presets[name];
 
-        Result = new PresetManagerResult { Presets = ordered };
+        // リネーム・削除を追跡済みの_currentPresetを使用
+        var current = ordered.ContainsKey(_currentPreset)
+            ? _currentPreset
+            : (ordered.Keys.FirstOrDefault() ?? "");
+
+        Result = new PresetManagerResult { Presets = ordered, CurrentPreset = current };
         DialogResult = true;
     }
 }

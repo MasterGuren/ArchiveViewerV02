@@ -162,7 +162,10 @@ public class ConfigService
 
             File.WriteAllText(ConfigPath, root.ToJsonString(JsonOptions));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConfigService] SaveState failed: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -175,7 +178,10 @@ public class ConfigService
             var json = JsonSerializer.Serialize(config, JsonOptions);
             File.WriteAllText(ConfigPath, json);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConfigService] SavePresets failed: {ex.Message}");
+        }
     }
 
     public static AppConfig CreateDefault()
