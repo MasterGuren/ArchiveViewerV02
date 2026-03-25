@@ -245,6 +245,18 @@
                                             Value="80" ValueChanged="VolumeSlider_ValueChanged" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="VolumeText" Text="80%" Foreground="{DynamicResource ThemeSubtext}"
                                                FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
+
+                                    <TextBlock Text="終了時:" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
+                                               VerticalAlignment="Center" Margin="16,0,4,0"/>
+                                    <RadioButton x:Name="RbEndStop" Content="停止" GroupName="VideoEnd" IsChecked="True"
+                                                 Click="VideoEndAction_Click" Tag="stop" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13"/>
+                                    <RadioButton x:Name="RbEndLoop" Content="リピート" GroupName="VideoEnd"
+                                                 Click="VideoEndAction_Click" Tag="loop" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13"/>
+                                    <RadioButton x:Name="RbEndNext" Content="次の動画" GroupName="VideoEnd"
+                                                 Click="VideoEndAction_Click" Tag="next" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13"/>
                                 </StackPanel>
                             </DockPanel>
                         </StackPanel>

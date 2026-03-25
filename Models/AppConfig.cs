@@ -60,6 +60,9 @@ public class AppState
     [JsonPropertyName("video_volume")]
     public int VideoVolume { get; set; } = 80;
 
+    [JsonPropertyName("video_end_action")]
+    public string VideoEndAction { get; set; } = "stop";
+
     [JsonPropertyName("last_mode")]
     public string LastMode { get; set; } = "browse";
 

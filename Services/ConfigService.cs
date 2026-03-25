@@ -94,6 +94,8 @@ public class ConfigService
             config.State.CardOrient = co.GetString() ?? "portrait";
         if (root.TryGetProperty("video_volume", out var vv))
             config.State.VideoVolume = vv.GetInt32();
+        if (root.TryGetProperty("video_end_action", out var vea))
+            config.State.VideoEndAction = vea.GetString() ?? "stop";
         if (root.TryGetProperty("last_mode", out var lm))
             config.State.LastMode = lm.GetString() ?? "browse";
 

@@ -62,6 +62,8 @@ public partial class MainWindow : Window
     private DispatcherTimer? _videoTimer;
     private bool _seekDragging;
     private int _videoVolume = 80;
+    private string _videoEndAction = "stop"; // "stop", "loop", "next"
+    private bool _videoEndHandled;
     private LibVLCSharp.WPF.VideoView? _videoView; // created/destroyed dynamically
 
     // Presets (3 mode sets)
@@ -115,6 +117,7 @@ public partial class MainWindow : Window
         SwitchMode(_config.State.LastMode);
         UpdateSortButtons();
         UpdateOrientButtons();
+        UpdateVideoEndActionButtons();
 
     }
 
@@ -130,6 +133,7 @@ public partial class MainWindow : Window
         _folderSort = _config.State.FolderSort;
         _cardOrient = _config.State.CardOrient;
         _videoVolume = _config.State.VideoVolume;
+        _videoEndAction = _config.State.VideoEndAction;
 
         LoadPreset(_currentPreset, _presets, ref _actions, ref _sourceFolders, ref _trashFolder);
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
@@ -174,6 +178,7 @@ public partial class MainWindow : Window
         _config.State.FolderSort = _folderSort;
         _config.State.CardOrient = _cardOrient;
         _config.State.VideoVolume = _videoVolume;
+        _config.State.VideoEndAction = _videoEndAction;
         _config.State.LastMode = _mode;
         _config.State.PresetOrder = [.. _presets.Keys];
         _config.State.ExtractPresetOrder = [.. _extractPresets.Keys];
@@ -642,18 +647,32 @@ public partial class MainWindow : Window
 
     private Button CreateSidebarButton(string text, Action onClick, string? bgColor = null)
     {
+        System.Windows.Media.Brush bgBrush;
+        System.Windows.Media.Brush fgBrush;
+        if (bgColor != null)
+        {
+            var color = (Color)ColorConverter.ConvertFromString(bgColor)!;
+            bgBrush = new SolidColorBrush(color);
+            // Relative luminance (sRGB) to pick white or black text
+            var luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
+            fgBrush = luminance < 140 ? Brushes.White : Brushes.Black;
+        }
+        else
+        {
+            bgBrush = Theme.PanelBrush;
+            fgBrush = Theme.TextBrush;
+        }
         var btn = new Button
         {
             Content = text,
             FontFamily = new FontFamily("Segoe UI Emoji, Yu Gothic UI"),
-            FontSize = 13,
-            Padding = new Thickness(6, 2, 6, 2),
+            FontSize = 14,
+            FontWeight = bgColor != null ? FontWeights.SemiBold : FontWeights.Normal,
+            Padding = new Thickness(8, 3, 8, 3),
             Margin = new Thickness(2),
             Cursor = Cursors.Hand,
-            Background = bgColor != null
-                ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(bgColor)!)
-                : Theme.PanelBrush,
-            Foreground = Theme.TextBrush,
+            Background = bgBrush,
+            Foreground = fgBrush,
             BorderBrush = Theme.BorderBrush,
             BorderThickness = new Thickness(1)
         };
@@ -2471,6 +2490,27 @@ public partial class MainWindow : Window
         VideoTimeText.Text = $"{FormatTime(time)} / {FormatTime(length)}";
 
         BtnPlayPause.Content = state == VLCState.Playing ? "⏸" : "▶";
+
+        // End-of-video auto-action (guard to fire only once per end)
+        if (state == VLCState.Ended && !_videoEndHandled)
+        {
+            _videoEndHandled = true;
+            switch (_videoEndAction)
+            {
+                case "loop":
+                    RestartVideoFrom(0);
+                    break;
+                case "next":
+                    if (_currentVideoIndex < _videoFiles.Count - 1)
+                        NavigateVideo(1);
+                    break;
+                // "stop": do nothing (default behavior)
+            }
+        }
+        else if (state == VLCState.Playing)
+        {
+            _videoEndHandled = false;
+        }
     }
 
     private void DrawSeekBar(long time, long length)
@@ -2620,6 +2660,19 @@ public partial class MainWindow : Window
         _videoVolume = (int)e.NewValue;
         if (VolumeText != null) VolumeText.Text = $"{_videoVolume}%";
         if (_vlcPlayer != null) _vlcPlayer.Volume = _videoVolume;
+    }
+
+    private void VideoEndAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string tag)
+            _videoEndAction = tag;
+    }
+
+    private void UpdateVideoEndActionButtons()
+    {
+        RbEndStop.IsChecked = _videoEndAction == "stop";
+        RbEndLoop.IsChecked = _videoEndAction == "loop";
+        RbEndNext.IsChecked = _videoEndAction == "next";
     }
 
     private void BtnCloseVideo_Click(object sender, RoutedEventArgs e)
