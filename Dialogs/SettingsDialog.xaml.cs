@@ -133,28 +133,17 @@ public partial class SettingsDialog : Window
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });  // Down
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });  // Delete
 
-            // Color button
-            var colorBtn = new Button
+            // Color dropdown
+            var colorCombo = CreateColorComboBox(action.Color);
+            colorCombo.SelectionChanged += (_, _) =>
             {
-                Width = 28, Height = 28,
-                Background = Brush(action.Color),
-                BorderBrush = Theme.BorderBrush,
-                BorderThickness = new Thickness(2),
-                Cursor = System.Windows.Input.Cursors.Hand,
-                ToolTip = "色を変更"
-            };
-            colorBtn.Click += (_, _) =>
-            {
-                var dlg = new ColorPickerDialog(action.Color);
-                dlg.Owner = this;
-                if (dlg.ShowDialog() == true)
+                if (colorCombo.SelectedItem is ComboBoxItem item && item.Tag is string hex)
                 {
-                    action.Color = dlg.SelectedColor;
-                    RebuildActions();
+                    action.Color = hex;
                 }
             };
-            Grid.SetColumn(colorBtn, 0);
-            row.Children.Add(colorBtn);
+            Grid.SetColumn(colorCombo, 0);
+            row.Children.Add(colorCombo);
 
             // Label
             var labelBox = MakeTextBox(action.Label);
@@ -473,6 +462,42 @@ public partial class SettingsDialog : Window
 
     private static SolidColorBrush Brush(string hex) =>
         new((Color)ColorConverter.ConvertFromString(hex)!);
+
+    private static System.Windows.Controls.ComboBox CreateColorComboBox(string currentColor)
+    {
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Width = 44, Height = 28,
+            Padding = new Thickness(2),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = "色を変更"
+        };
+        foreach (var hex in Theme.ColorChoices)
+        {
+            var item = new ComboBoxItem
+            {
+                Tag = hex,
+                Content = new Border
+                {
+                    Width = 24, Height = 16,
+                    Background = Brush(hex),
+                    CornerRadius = new CornerRadius(2)
+                },
+                Padding = new Thickness(2)
+            };
+            combo.Items.Add(item);
+            if (hex.Equals(currentColor, StringComparison.OrdinalIgnoreCase))
+                combo.SelectedItem = item;
+        }
+        // Show color swatch as the selected display
+        combo.Loaded += (_, _) =>
+        {
+            // If nothing matched, select first
+            if (combo.SelectedItem == null && combo.Items.Count > 0)
+                combo.SelectedIndex = 0;
+        };
+        return combo;
+    }
 
     private void AddSeparator()
     {

@@ -12,7 +12,7 @@
     <Window.Resources>
         <Style x:Key="DarkButton" TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource ThemePanel}"/>
-            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemePanelText}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,4"/>
@@ -31,9 +31,11 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeHoverText}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -43,11 +45,12 @@
 
         <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource DarkButton}">
             <Setter Property="Background" Value="{DynamicResource ThemeAccent}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
         </Style>
 
         <Style x:Key="ModeButton" TargetType="ToggleButton">
             <Setter Property="Background" Value="{DynamicResource ThemePanel}"/>
-            <Setter Property="Foreground" Value="{DynamicResource ThemeSubtext}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemePanelText}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="12,4"/>
@@ -66,10 +69,11 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeAccent}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeHoverText}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

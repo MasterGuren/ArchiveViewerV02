@@ -388,34 +388,64 @@ public partial class MainWindow : Window
     private void BuildThemeSelector()
     {
         AddSidebarLabel("テーマ");
-        var panel = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var combo = new System.Windows.Controls.ComboBox
+        {
+            Width = 200,
+            Margin = new Thickness(0, 0, 0, 4),
+            FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
+            FontSize = 13,
+            Cursor = Cursors.Hand
+        };
         foreach (var preset in Theme.Presets)
         {
             var name = preset.Name;
-            var isActive = name == Theme.CurrentThemeName;
-            var btn = new Button
+            var accentBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(preset.Accent)!);
+            var bgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(preset.Bg)!);
+
+            var swatch = new System.Windows.Shapes.Rectangle
             {
-                Content = name,
-                Padding = new Thickness(6, 2, 6, 2),
-                Margin = new Thickness(0, 0, 2, 2),
-                FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
-                FontSize = 12,
-                Background = isActive
-                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(preset.Accent)!)
-                    : Theme.PanelBrush,
-                Foreground = Theme.TextBrush,
-                BorderBrush = Theme.BorderBrush,
-                Cursor = Cursors.Hand
+                Width = 16, Height = 16,
+                Fill = accentBrush,
+                RadiusX = 2, RadiusY = 2,
+                Margin = new Thickness(0, 0, 6, 0)
             };
-            btn.Click += (_, _) =>
+            var bgSwatch = new System.Windows.Shapes.Rectangle
+            {
+                Width = 16, Height = 16,
+                Fill = bgBrush,
+                RadiusX = 2, RadiusY = 2,
+                Stroke = Theme.BorderBrush,
+                StrokeThickness = 1,
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+            var label = new TextBlock
+            {
+                Text = name,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
+                FontSize = 13
+            };
+            var itemPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            itemPanel.Children.Add(swatch);
+            itemPanel.Children.Add(bgSwatch);
+            itemPanel.Children.Add(label);
+
+            var item = new ComboBoxItem { Content = itemPanel, Tag = name };
+            combo.Items.Add(item);
+
+            if (name == Theme.CurrentThemeName)
+                combo.SelectedItem = item;
+        }
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedItem is ComboBoxItem item && item.Tag is string name)
             {
                 Theme.ApplyTheme(name);
                 SaveStateOnly();
                 RebuildSidebar();
-            };
-            panel.Children.Add(btn);
-        }
-        LeftSidebar.Children.Add(panel);
+            }
+        };
+        LeftSidebar.Children.Add(combo);
     }
 
     private void BuildBrowseSidebar()
@@ -791,6 +821,7 @@ public partial class MainWindow : Window
         {
             var level = i;
             var isActive = _ratingJudgmentLevel == level;
+            var bg = isActive ? Theme.AccentBrush : Theme.PanelBrush;
             var btn = new Button
             {
                 Content = $"{i}→{i + 1}",
@@ -798,8 +829,8 @@ public partial class MainWindow : Window
                 Margin = new Thickness(0, 0, 2, 2),
                 FontFamily = new FontFamily("Yu Gothic UI"),
                 FontSize = 12,
-                Background = isActive ? Theme.AccentBrush : Theme.PanelBrush,
-                Foreground = Theme.TextBrush,
+                Background = bg,
+                Foreground = ContrastForeground(bg),
                 BorderBrush = Theme.BorderBrush,
                 Cursor = Cursors.Hand
             };
@@ -1042,6 +1073,7 @@ public partial class MainWindow : Window
         {
             var level = i;
             var isActive = _videoRatingJudgmentLevel == level;
+            var bg = isActive ? Theme.AccentBrush : Theme.PanelBrush;
             var btn = new Button
             {
                 Content = $"{i}→{i + 1}",
@@ -1049,8 +1081,8 @@ public partial class MainWindow : Window
                 Margin = new Thickness(0, 0, 2, 2),
                 FontFamily = new FontFamily("Yu Gothic UI"),
                 FontSize = 12,
-                Background = isActive ? Theme.AccentBrush : Theme.PanelBrush,
-                Foreground = Theme.TextBrush,
+                Background = bg,
+                Foreground = ContrastForeground(bg),
                 BorderBrush = Theme.BorderBrush,
                 Cursor = Cursors.Hand
             };
@@ -1263,22 +1295,31 @@ public partial class MainWindow : Window
         });
     }
 
+    /// <summary>背景色の輝度に応じて白/黒テキストを返す</summary>
+    private static System.Windows.Media.Brush ContrastForeground(System.Windows.Media.Brush bg)
+    {
+        if (bg is SolidColorBrush scb)
+        {
+            var c = scb.Color;
+            var luminance = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+            return luminance < 140 ? Brushes.White : Brushes.Black;
+        }
+        return Theme.TextBrush;
+    }
+
     private Button CreateSidebarButton(string text, Action onClick, string? bgColor = null)
     {
         System.Windows.Media.Brush bgBrush;
         System.Windows.Media.Brush fgBrush;
         if (bgColor != null)
         {
-            var color = (Color)ColorConverter.ConvertFromString(bgColor)!;
-            bgBrush = new SolidColorBrush(color);
-            // Relative luminance (sRGB) to pick white or black text
-            var luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
-            fgBrush = luminance < 140 ? Brushes.White : Brushes.Black;
+            bgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(bgColor)!);
+            fgBrush = ContrastForeground(bgBrush);
         }
         else
         {
             bgBrush = Theme.PanelBrush;
-            fgBrush = Theme.TextBrush;
+            fgBrush = ContrastForeground(bgBrush);
         }
         var btn = new Button
         {
@@ -1404,6 +1445,7 @@ public partial class MainWindow : Window
 
     private Button CreateTabButton(string label, bool isActive, Action onClick)
     {
+        var bg = isActive ? Theme.AccentBrush : Theme.PanelBrush;
         var btn = new Button
         {
             Content = label,
@@ -1411,8 +1453,8 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 0, 2, 2),
             FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
             FontSize = 13,
-            Background = isActive ? Theme.AccentBrush : Theme.PanelBrush,
-            Foreground = Theme.TextBrush,
+            Background = bg,
+            Foreground = ContrastForeground(bg),
             BorderBrush = Theme.BorderBrush,
             Cursor = Cursors.Hand
         };
