@@ -56,23 +56,23 @@ public partial class ImageCard : UserControl
         if (_isSelected)
         {
             CardBorder.BorderBrush = _isRangeSelected
-                ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22c55e")!)
-                : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#a855f7")!);
+                ? Theme.RangeSelectBrush
+                : Theme.SelectBrush;
             CardBorder.Background = _isRangeSelected
-                ? new SolidColorBrush(Color.FromArgb(40, 34, 197, 94))
-                : new SolidColorBrush(Color.FromArgb(40, 168, 85, 247));
+                ? new SolidColorBrush(Color.FromArgb(40, Theme.RangeSelectColor.R, Theme.RangeSelectColor.G, Theme.RangeSelectColor.B))
+                : new SolidColorBrush(Color.FromArgb(40, Theme.SelectColor.R, Theme.SelectColor.G, Theme.SelectColor.B));
         }
         else
         {
             CardBorder.BorderBrush = Brushes.Transparent;
-            CardBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2a2a3e")!);
+            CardBorder.Background = Theme.PanelBrush;
         }
     }
 
     private void OnMouseEnter(object sender, MouseEventArgs e)
     {
         if (!_isSelected)
-            CardBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7c3aed")!);
+            CardBorder.BorderBrush = Theme.AccentBrush;
     }
 
     private void OnMouseLeave(object sender, MouseEventArgs e)

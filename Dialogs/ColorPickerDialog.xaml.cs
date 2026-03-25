@@ -23,7 +23,7 @@ public partial class ColorPickerDialog : Window
                 BorderThickness = new Thickness(3),
                 BorderBrush = colorHex == currentColor
                     ? Brushes.White
-                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3f3f5e")!),
+                    : Theme.BorderBrush,
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             var hex = colorHex;

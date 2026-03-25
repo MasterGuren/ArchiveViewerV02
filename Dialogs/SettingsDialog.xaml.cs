@@ -85,7 +85,7 @@ public partial class SettingsDialog : Window
         var titleBlock = new TextBlock
         {
             Text = title,
-            Foreground = Brush("#e2e8f0"),
+            Foreground = Theme.TextBrush,
             FontFamily = new FontFamily("Yu Gothic UI"),
             FontSize = 14,
             FontWeight = FontWeights.Bold,
@@ -98,8 +98,8 @@ public partial class SettingsDialog : Window
         {
             Content = "💾 保存",
             Background = Brush("#22c55e"),
-            Foreground = Brush("#e2e8f0"),
-            BorderBrush = Brush("#3f3f5e"),
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
             FontFamily = new FontFamily("Yu Gothic UI"),
             FontSize = 11,
             Padding = new Thickness(12, 3, 12, 3),
@@ -138,7 +138,7 @@ public partial class SettingsDialog : Window
             {
                 Width = 28, Height = 28,
                 Background = Brush(action.Color),
-                BorderBrush = Brush("#3f3f5e"),
+                BorderBrush = Theme.BorderBrush,
                 BorderThickness = new Thickness(2),
                 Cursor = System.Windows.Input.Cursors.Hand,
                 ToolTip = "色を変更"
@@ -240,9 +240,9 @@ public partial class SettingsDialog : Window
         var addBtn = new Button
         {
             Content = "+ 追加",
-            Background = Brush("#2a2a3e"),
-            Foreground = Brush("#e2e8f0"),
-            BorderBrush = Brush("#3f3f5e"),
+            Background = Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
             FontFamily = new FontFamily("Yu Gothic UI"),
             FontSize = 11,
             Padding = new Thickness(8, 3, 8, 3),
@@ -341,9 +341,9 @@ public partial class SettingsDialog : Window
         var addBtn = new Button
         {
             Content = "+ 追加",
-            Background = Brush("#2a2a3e"),
-            Foreground = Brush("#e2e8f0"),
-            BorderBrush = Brush("#3f3f5e"),
+            Background = Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
             FontFamily = new FontFamily("Yu Gothic UI"),
             FontSize = 11,
             Padding = new Thickness(8, 3, 8, 3),
@@ -447,10 +447,10 @@ public partial class SettingsDialog : Window
     private static TextBox MakeTextBox(string text) => new()
     {
         Text = text,
-        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2a2a3e")!),
-        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#e2e8f0")!),
-        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3f3f5e")!),
-        CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#e2e8f0")!),
+        Background = Theme.PanelBrush,
+        Foreground = Theme.TextBrush,
+        BorderBrush = Theme.BorderBrush,
+        CaretBrush = Theme.TextBrush,
         FontFamily = new FontFamily("Yu Gothic UI"),
         FontSize = 11,
         Padding = new Thickness(4, 2, 4, 2),
@@ -460,9 +460,9 @@ public partial class SettingsDialog : Window
     private static Button MakeSmallButton(string text) => new()
     {
         Content = text,
-        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2a2a3e")!),
-        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#e2e8f0")!),
-        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3f3f5e")!),
+        Background = Theme.PanelBrush,
+        Foreground = Theme.TextBrush,
+        BorderBrush = Theme.BorderBrush,
         FontFamily = new FontFamily("Yu Gothic UI"),
         FontSize = 11,
         Padding = new Thickness(2),
@@ -479,7 +479,7 @@ public partial class SettingsDialog : Window
         MainPanel.Children.Add(new Border
         {
             Height = 1,
-            Background = Brush("#3f3f5e"),
+            Background = Theme.BorderBrush,
             Margin = new Thickness(0, 12, 0, 4)
         });
     }

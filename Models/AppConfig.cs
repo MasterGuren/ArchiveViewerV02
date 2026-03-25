@@ -62,4 +62,7 @@ public class AppState
 
     [JsonPropertyName("last_mode")]
     public string LastMode { get; set; } = "browse";
+
+    [JsonPropertyName("theme")]
+    public string Theme { get; set; } = "";
 }

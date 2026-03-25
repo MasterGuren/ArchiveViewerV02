@@ -45,7 +45,7 @@ public partial class ActionEditDialog : Window
                 BorderThickness = new Thickness(2),
                 BorderBrush = colorHex == _selectedColor
                     ? Brushes.White
-                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3f3f5e")!),
+                    : Theme.BorderBrush,
                 Cursor = System.Windows.Input.Cursors.Hand
             };
             var hex = colorHex;

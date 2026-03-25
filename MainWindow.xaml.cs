@@ -180,6 +180,7 @@ public partial class MainWindow : Window
         _config.State.VideoPresetOrder = [.. _videoPresets.Keys];
         _config.State.ImageCurrentPreset = _imageCurrentPreset;
         _config.State.ImagePresetOrder = [.. _imagePresets.Keys];
+        _config.State.Theme = Theme.CurrentThemeName;
     }
 
     /// <summary>
@@ -362,6 +363,8 @@ public partial class MainWindow : Window
 
     private void RebuildSidebar()
     {
+        var scrollPos = SidebarScroller.VerticalOffset;
+
         LeftSidebar.Children.Clear();
 
         switch (_mode)
@@ -379,6 +382,47 @@ public partial class MainWindow : Window
                 BuildImageSidebar();
                 break;
         }
+
+        // Theme selector (common to all modes)
+        AddSidebarSeparator();
+        BuildThemeSelector();
+
+        // Restore scroll position after layout completes
+        Dispatcher.InvokeAsync(() => SidebarScroller.ScrollToVerticalOffset(scrollPos),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void BuildThemeSelector()
+    {
+        AddSidebarLabel("テーマ");
+        var panel = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        foreach (var preset in Theme.Presets)
+        {
+            var name = preset.Name;
+            var isActive = name == Theme.CurrentThemeName;
+            var btn = new Button
+            {
+                Content = name,
+                Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(0, 0, 2, 2),
+                FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
+                FontSize = 12,
+                Background = isActive
+                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(preset.Accent)!)
+                    : Theme.PanelBrush,
+                Foreground = Theme.TextBrush,
+                BorderBrush = Theme.BorderBrush,
+                Cursor = Cursors.Hand
+            };
+            btn.Click += (_, _) =>
+            {
+                Theme.ApplyTheme(name);
+                SaveStateOnly();
+                RebuildSidebar();
+            };
+            panel.Children.Add(btn);
+        }
+        LeftSidebar.Children.Add(panel);
     }
 
     private void BuildBrowseSidebar()
@@ -686,12 +730,9 @@ public partial class MainWindow : Window
 
         var listBox = new System.Windows.Controls.ListBox
         {
-            Background = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2a2a3e")),
-            Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#e2e8f0")),
-            BorderBrush = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3f3f5e")),
+            Background = Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
             FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
             FontSize = 14,
             MaxHeight = 120,
@@ -733,12 +774,9 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 0, 2, 2),
             FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
             FontSize = 13,
-            Background = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(isActive ? "#7c3aed" : "#2a2a3e")),
-            Foreground = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#e2e8f0")),
-            BorderBrush = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3f3f5e")),
+            Background = isActive ? Theme.AccentBrush : Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
             Cursor = Cursors.Hand
         };
         btn.Click += (_, _) => onClick();
@@ -2192,7 +2230,7 @@ public partial class MainWindow : Window
         {
             Text = value,
             Width = 180,
-            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1e1e2e")!),
+            Background = Theme.BgBrush,
             Foreground = Theme.TextBrush,
             BorderBrush = Theme.BorderBrush,
             CaretBrush = Theme.TextBrush,
