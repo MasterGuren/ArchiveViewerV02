@@ -66,24 +66,12 @@ public partial class MainWindow : Window
     private bool _videoEndHandled;
     private LibVLCSharp.WPF.VideoView? _videoView; // created/destroyed dynamically
 
-    // Presets (3 mode sets)
-    private Dictionary<string, PresetData> _presets = new();
-    private string _currentPreset = "";
-    private List<ActionItem> _actions = [];
-    private List<string> _sourceFolders = [];
-    private string _trashFolder = "";
-
+    // Presets
     private Dictionary<string, PresetData> _extractPresets = new();
     private string _extractCurrentPreset = "";
     private List<ActionItem> _extractActions = [];
     private List<string> _extractSourceFolders = [];
     private string _extractTrashFolder = "";
-
-    private Dictionary<string, PresetData> _videoPresets = new();
-    private string _videoCurrentPreset = "";
-    private List<ActionItem> _videoActions = [];
-    private List<string> _videoFolders = [];
-    private string _videoTrashFolder = "";
 
     // Image browse
     private Dictionary<string, PresetData> _imagePresets = new();
@@ -93,6 +81,18 @@ public partial class MainWindow : Window
     private string _imageTrashFolder = "";
     private string? _imageFolderPath;
     private List<string> _imagePaths = [];
+
+    // Rating (昇降格)
+    private Dictionary<string, RatingPresetData> _ratingPresets = new();
+    private string _ratingCurrentPreset = "";
+    private RatingPresetData? _currentRatingData;
+    private int _ratingJudgmentLevel = 0; // 0-8 for "0→1" through "8→9"
+
+    // Video Rating (動画昇降格)
+    private Dictionary<string, RatingPresetData> _videoRatingPresets = new();
+    private string _videoRatingCurrentPreset = "";
+    private RatingPresetData? _currentVideoRatingData;
+    private int _videoRatingJudgmentLevel = 0;
 
     // Loading
     private CancellationTokenSource? _loadCts;
@@ -123,24 +123,26 @@ public partial class MainWindow : Window
 
     private void LoadConfigToState()
     {
-        _presets = _config.Presets;
-        _currentPreset = _config.State.CurrentPreset;
         _extractPresets = _config.ExtractPresets;
         _extractCurrentPreset = _config.State.ExtractCurrentPreset;
         _extractOutputFolder = _config.State.ExtractOutputFolder;
-        _videoPresets = _config.VideoPresets;
-        _videoCurrentPreset = _config.State.VideoCurrentPreset;
         _folderSort = _config.State.FolderSort;
         _cardOrient = _config.State.CardOrient;
         _videoVolume = _config.State.VideoVolume;
         _videoEndAction = _config.State.VideoEndAction;
 
-        LoadPreset(_currentPreset, _presets, ref _actions, ref _sourceFolders, ref _trashFolder);
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
-        LoadPreset(_videoCurrentPreset, _videoPresets, ref _videoActions, ref _videoFolders, ref _videoTrashFolder, isVideo: true);
         _imagePresets = _config.ImagePresets;
         _imageCurrentPreset = _config.State.ImageCurrentPreset;
         LoadPreset(_imageCurrentPreset, _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder);
+        _ratingPresets = _config.RatingPresets;
+        _ratingCurrentPreset = _config.State.RatingCurrentPreset;
+        _ratingJudgmentLevel = _config.State.RatingJudgmentLevel;
+        LoadRatingPreset();
+        _videoRatingPresets = _config.VideoRatingPresets;
+        _videoRatingCurrentPreset = _config.State.VideoRatingCurrentPreset;
+        _videoRatingJudgmentLevel = _config.State.VideoRatingJudgmentLevel;
+        LoadVideoRatingPreset();
     }
 
     private void LoadPreset(string name, Dictionary<string, PresetData> presets,
@@ -171,20 +173,22 @@ public partial class MainWindow : Window
     /// </summary>
     private void SyncStateToConfig()
     {
-        _config.State.CurrentPreset = _currentPreset;
         _config.State.ExtractCurrentPreset = _extractCurrentPreset;
-        _config.State.VideoCurrentPreset = _videoCurrentPreset;
         _config.State.ExtractOutputFolder = _extractOutputFolder;
         _config.State.FolderSort = _folderSort;
         _config.State.CardOrient = _cardOrient;
         _config.State.VideoVolume = _videoVolume;
         _config.State.VideoEndAction = _videoEndAction;
         _config.State.LastMode = _mode;
-        _config.State.PresetOrder = [.. _presets.Keys];
         _config.State.ExtractPresetOrder = [.. _extractPresets.Keys];
-        _config.State.VideoPresetOrder = [.. _videoPresets.Keys];
         _config.State.ImageCurrentPreset = _imageCurrentPreset;
         _config.State.ImagePresetOrder = [.. _imagePresets.Keys];
+        _config.State.RatingCurrentPreset = _ratingCurrentPreset;
+        _config.State.RatingPresetOrder = [.. _ratingPresets.Keys];
+        _config.State.RatingJudgmentLevel = _ratingJudgmentLevel;
+        _config.State.VideoRatingCurrentPreset = _videoRatingCurrentPreset;
+        _config.State.VideoRatingPresetOrder = [.. _videoRatingPresets.Keys];
+        _config.State.VideoRatingJudgmentLevel = _videoRatingJudgmentLevel;
         _config.State.Theme = Theme.CurrentThemeName;
     }
 
@@ -203,19 +207,6 @@ public partial class MainWindow : Window
     private void SavePresets()
     {
         // 現在のプリセットデータをconfigに反映（既存のCategoryを保持、存在するプリセットのみ）
-        if (!string.IsNullOrEmpty(_currentPreset) && _presets.ContainsKey(_currentPreset))
-        {
-            var existing = _presets[_currentPreset];
-            _presets[_currentPreset] = new PresetData
-            {
-                Actions = _actions.Select(a => a.Clone()).ToList(),
-                SourceFolders = new List<string>(_sourceFolders),
-                TrashFolder = _trashFolder,
-                Category = existing.Category
-            };
-        }
-        _config.Presets = _presets;
-
         if (!string.IsNullOrEmpty(_extractCurrentPreset) && _extractPresets.ContainsKey(_extractCurrentPreset))
         {
             var existing = _extractPresets[_extractCurrentPreset];
@@ -229,19 +220,6 @@ public partial class MainWindow : Window
         }
         _config.ExtractPresets = _extractPresets;
 
-        if (!string.IsNullOrEmpty(_videoCurrentPreset) && _videoPresets.ContainsKey(_videoCurrentPreset))
-        {
-            var existing = _videoPresets[_videoCurrentPreset];
-            _videoPresets[_videoCurrentPreset] = new PresetData
-            {
-                Actions = _videoActions.Select(a => a.Clone()).ToList(),
-                VideoFolders = new List<string>(_videoFolders),
-                TrashFolder = _videoTrashFolder,
-                Category = existing.Category
-            };
-        }
-        _config.VideoPresets = _videoPresets;
-
         if (!string.IsNullOrEmpty(_imageCurrentPreset) && _imagePresets.ContainsKey(_imageCurrentPreset))
         {
             var existing = _imagePresets[_imageCurrentPreset];
@@ -254,6 +232,10 @@ public partial class MainWindow : Window
             };
         }
         _config.ImagePresets = _imagePresets;
+
+        // Rating presets are saved directly (no editing fields to sync)
+        _config.RatingPresets = _ratingPresets;
+        _config.VideoRatingPresets = _videoRatingPresets;
 
         SyncStateToConfig();
         ConfigService.SavePresets(_config);
@@ -276,6 +258,7 @@ public partial class MainWindow : Window
         BtnExtract.IsChecked = mode == "extract";
         BtnVideo.IsChecked = mode == "video";
         BtnImage.IsChecked = mode == "image";
+        BtnRating.IsChecked = mode == "rating";
 
         // Show/hide extract UI
         bool isExtract = mode == "extract";
@@ -299,7 +282,8 @@ public partial class MainWindow : Window
 
         // Clear state when switching between image and archive modes
         bool isImage = mode == "image";
-        bool isBrowseOrExtract = mode == "browse" || mode == "extract";
+        bool isRating = mode == "rating";
+        bool isBrowseOrExtract = mode == "browse" || mode == "extract" || isRating;
         if (isImage && _archivePath != null)
         {
             // Switching to image mode: clear archive data
@@ -363,6 +347,7 @@ public partial class MainWindow : Window
     private void BtnExtract_Click(object sender, RoutedEventArgs e) => SwitchMode("extract");
     private void BtnVideo_Click(object sender, RoutedEventArgs e) => SwitchMode("video");
     private void BtnImage_Click(object sender, RoutedEventArgs e) => SwitchMode("image");
+    private void BtnRating_Click(object sender, RoutedEventArgs e) => SwitchMode("rating");
 
     // ======== SIDEBAR ========
 
@@ -385,6 +370,9 @@ public partial class MainWindow : Window
                 break;
             case "image":
                 BuildImageSidebar();
+                break;
+            case "rating":
+                BuildRatingSidebar();
                 break;
         }
 
@@ -432,40 +420,9 @@ public partial class MainWindow : Window
 
     private void BuildBrowseSidebar()
     {
-        // Working folder
-        if (_archivePath != null)
-        {
-            AddSidebarLabel("作業フォルダ");
-            AddSidebarText(Path.GetDirectoryName(_archivePath) ?? "");
-            AddSidebarSeparator();
-        }
-
-        // Preset
-        BuildPresetSection(_currentPreset, _presets,
-            (name) => { _currentPreset = name; LoadPreset(name, _presets, ref _actions, ref _sourceFolders, ref _trashFolder); SaveStateOnly(); RebuildSidebar(); },
-            () => ManagePresets(ref _currentPreset, ref _presets, ref _actions, ref _sourceFolders, ref _trashFolder));
-
-        // Settings button
-        var settingsBtn = CreateSidebarButton("⚙ プリセット設定", () => OpenSettings(
-            _actions, _sourceFolders, _trashFolder, "ソースフォルダ", false,
-            (r) => { _actions = r.Actions; _sourceFolders = r.Folders; _trashFolder = r.TrashFolder; }));
-        settingsBtn.Margin = new Thickness(0, 4, 0, 4);
-        LeftSidebar.Children.Add(settingsBtn);
-
-        AddSidebarSeparator();
-
-        // Actions (execute only)
-        BuildActionButtons(_actions, (a) => ExecuteAction(a));
-
-        AddSidebarSeparator();
-
-        // Source folders (open only)
-        BuildFolderButtons("ソースフォルダ", _sourceFolders,
-            (f) => OpenFromFolder(f),
-            (f) => OpenRandomFromFolder(f));
-
-        AddSidebarSeparator();
-        BuildTrashDisplay(_trashFolder);
+        // 旧閲覧モード — 現在は無効化 (Collapsed)
+        // 昇降格モード(rating)のサイドバーにリダイレクト
+        BuildRatingSidebar();
     }
 
     private void BuildExtractSidebar()
@@ -532,42 +489,37 @@ public partial class MainWindow : Window
         {
             AddSidebarLabel("動画ファイル");
             AddSidebarText(Path.GetFileName(_videoPath));
+            AddSidebarSeparator();
         }
 
-        var openBtn = CreateSidebarButton("📁 動画を開く", () => OpenVideoFile());
-        openBtn.Margin = new Thickness(0, 4, 0, 8);
-        LeftSidebar.Children.Add(openBtn);
-
-        AddSidebarSeparator();
-
-        // Preset
-        BuildPresetSection(_videoCurrentPreset, _videoPresets,
-            (name) => { _videoCurrentPreset = name; LoadPreset(name, _videoPresets, ref _videoActions, ref _videoFolders, ref _videoTrashFolder, isVideo: true); SaveStateOnly(); RebuildSidebar(); },
-            () => ManagePresets(ref _videoCurrentPreset, ref _videoPresets, ref _videoActions, ref _videoFolders, ref _videoTrashFolder, isVideo: true));
-
-        AddSidebarSeparator();
+        // Preset selection (video-specific)
+        BuildVideoRatingPresetSection();
 
         // Settings button
-        var settingsBtn = CreateSidebarButton("⚙ プリセット設定", () => OpenSettings(
-            _videoActions, _videoFolders, _videoTrashFolder, "動画フォルダ", true,
-            (r) => { _videoActions = r.Actions; _videoFolders = r.Folders; _videoTrashFolder = r.TrashFolder; }));
+        var settingsBtn = CreateSidebarButton("⚙ 昇降格設定", () => OpenVideoRatingSettings());
         settingsBtn.Margin = new Thickness(0, 4, 0, 4);
         LeftSidebar.Children.Add(settingsBtn);
 
         AddSidebarSeparator();
 
-        // Actions (execute only)
-        BuildActionButtons(_videoActions, (a) => ExecuteVideoAction(a));
+        // Judgment level selector
+        BuildVideoJudgmentLevelSelector();
 
         AddSidebarSeparator();
 
-        // Video folders (open only)
-        BuildFolderButtons("動画フォルダ", _videoFolders,
-            (f) => OpenVideoFromFolder(f),
-            (f) => OpenRandomVideoFromFolder(f));
+        // Action buttons (video)
+        BuildVideoRatingActionButtons();
 
         AddSidebarSeparator();
-        BuildTrashDisplay(_videoTrashFolder);
+
+        // Source folders for current judgment level (video)
+        BuildVideoRatingSourceFolderButtons();
+
+        AddSidebarSeparator();
+
+        // Delete folder display
+        if (_currentVideoRatingData != null)
+            BuildTrashDisplay(_currentVideoRatingData.DeleteFolders[_videoRatingJudgmentLevel]);
     }
 
     private void BuildImageSidebar()
@@ -606,6 +558,672 @@ public partial class MainWindow : Window
 
         AddSidebarSeparator();
         BuildTrashDisplay(_imageTrashFolder);
+    }
+
+    // ======== RATING (昇降格) SIDEBAR ========
+
+    private void LoadRatingPreset()
+    {
+        if (_ratingPresets.TryGetValue(_ratingCurrentPreset, out var preset))
+            _currentRatingData = preset;
+        else
+            _currentRatingData = null;
+    }
+
+    private void LoadVideoRatingPreset()
+    {
+        if (_videoRatingPresets.TryGetValue(_videoRatingCurrentPreset, out var preset))
+            _currentVideoRatingData = preset;
+        else
+            _currentVideoRatingData = null;
+    }
+
+    private void CloseArchiveForRating()
+    {
+        _archivePath = null;
+        _imageNames.Clear();
+        _thumbData = null;
+        _thumbnails = null;
+        ThumbnailGrid.Children.Clear();
+        _cards.Clear();
+        _selectStart = null;
+        _selectEnd = null;
+        _folderArchives.Clear();
+        _currentArchiveIndex = -1;
+        if (_viewerOpen) CloseViewer();
+        EmptyMessage.Visibility = Visibility.Visible;
+        UpdateNavigation();
+    }
+
+    private void BuildRatingSidebar()
+    {
+        // Working folder
+        if (_archivePath != null)
+        {
+            AddSidebarLabel("作業フォルダ");
+            AddSidebarText(Path.GetDirectoryName(_archivePath) ?? "");
+            AddSidebarSeparator();
+        }
+
+        // Preset selection
+        BuildRatingPresetSection();
+
+        // Settings button
+        var settingsBtn = CreateSidebarButton("⚙ 昇降格設定", () => OpenRatingSettings());
+        settingsBtn.Margin = new Thickness(0, 4, 0, 4);
+        LeftSidebar.Children.Add(settingsBtn);
+
+        AddSidebarSeparator();
+
+        // Judgment level selector
+        BuildJudgmentLevelSelector();
+
+        AddSidebarSeparator();
+
+        // Action buttons
+        BuildRatingActionButtons();
+
+        AddSidebarSeparator();
+
+        // Source folder selector for current judgment level
+        BuildRatingSourceFolderButtons();
+
+        AddSidebarSeparator();
+
+        // Delete folder display
+        if (_currentRatingData != null)
+            BuildTrashDisplay(_currentRatingData.DeleteFolders[_ratingJudgmentLevel]);
+    }
+
+    private void BuildRatingPresetSection()
+    {
+        AddSidebarLabel("プリセット");
+
+        if (!_presetTabFilters.ContainsKey("rating"))
+            _presetTabFilters["rating"] = null;
+
+        var tabFilter = _presetTabFilters["rating"];
+
+        if (tabFilter == null && !string.IsNullOrEmpty(_ratingCurrentPreset)
+            && _ratingPresets.TryGetValue(_ratingCurrentPreset, out var curPreset)
+            && !string.IsNullOrEmpty(curPreset.Category))
+        {
+            tabFilter = curPreset.Category;
+            _presetTabFilters["rating"] = tabFilter;
+        }
+        tabFilter ??= "";
+
+        var categories = _ratingPresets.Values
+            .Select(p => p.Category)
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        if (categories.Count > 0)
+        {
+            var tabPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 2) };
+            foreach (var cat in categories)
+            {
+                var c = cat;
+                var tab = CreateTabButton(c, tabFilter == c, () =>
+                {
+                    _presetTabFilters["rating"] = c;
+                    RebuildSidebar();
+                });
+                tabPanel.Children.Add(tab);
+            }
+            var allTab = CreateTabButton("すべて", string.IsNullOrEmpty(tabFilter), () =>
+            {
+                _presetTabFilters["rating"] = "";
+                RebuildSidebar();
+            });
+            tabPanel.Children.Add(allTab);
+            LeftSidebar.Children.Add(tabPanel);
+        }
+
+        var filteredPresets = string.IsNullOrEmpty(tabFilter)
+            ? _ratingPresets.Keys.ToList()
+            : _ratingPresets.Where(p => p.Value.Category == tabFilter).Select(p => p.Key).ToList();
+
+        var listBox = new System.Windows.Controls.ListBox
+        {
+            Background = Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
+            FontFamily = new FontFamily("Yu Gothic UI"),
+            FontSize = 14,
+            MaxHeight = 120,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+
+        foreach (var name in filteredPresets)
+        {
+            listBox.Items.Add(new ListBoxItem { Content = name, Tag = name });
+            if (name == _ratingCurrentPreset)
+                listBox.SelectedIndex = listBox.Items.Count - 1;
+        }
+
+        listBox.SelectionChanged += (_, _) =>
+        {
+            if (listBox.SelectedItem is ListBoxItem item && item.Tag is string name && name != _ratingCurrentPreset)
+            {
+                _ratingCurrentPreset = name;
+                LoadRatingPreset();
+                CloseArchiveForRating();
+                SaveStateOnly();
+                RebuildSidebar();
+            }
+        };
+
+        if (listBox.SelectedIndex >= 0)
+            listBox.Loaded += (_, _) => listBox.ScrollIntoView(listBox.SelectedItem);
+
+        LeftSidebar.Children.Add(listBox);
+
+        var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", () => ManageRatingPresets());
+        manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        manageBtn.Margin = new Thickness(0, 0, 0, 4);
+        LeftSidebar.Children.Add(manageBtn);
+    }
+
+    private void ManageRatingPresets()
+    {
+        ApplyRatingPresetManager(_ratingPresets, ref _ratingCurrentPreset, () =>
+        {
+            LoadRatingPreset();
+            SavePresets();
+            RebuildSidebar();
+        });
+    }
+
+    /// <summary>
+    /// Rating用プリセット管理の共通処理。PresetManagerDialogはPresetDataしか扱えないため、
+    /// カテゴリだけをPresetDataに載せてダイアログに渡し、結果からRatingPresetDataを再構築する。
+    /// コピー時はPresetData内のSourceFoldersの要素数でコピー元を特定し、RatingPresetDataをCloneする。
+    /// </summary>
+    private void ApplyRatingPresetManager(Dictionary<string, RatingPresetData> presets,
+        ref string currentPreset, Action onDone)
+    {
+        // PresetData変換時に、コピー追跡用のマーカーとしてSourceFolders[0]にキー名を埋め込む
+        var asPresetDict = presets.ToDictionary(
+            kv => kv.Key,
+            kv => new PresetData { Category = kv.Value.Category, SourceFolders = [kv.Key] });
+
+        var dlg = new PresetManagerDialog(asPresetDict, currentPreset);
+        dlg.Owner = this;
+        if (dlg.ShowDialog() != true || dlg.Result == null) return;
+
+        var newPresets = new Dictionary<string, RatingPresetData>();
+        foreach (var (key, presetData) in dlg.Result.Presets)
+        {
+            // SourceFolders[0]にコピー元の名前が入っている
+            var originName = presetData.SourceFolders.Count > 0 ? presetData.SourceFolders[0] : "";
+
+            if (presets.TryGetValue(originName, out var origin))
+            {
+                // 同名 = そのまま or リネーム, 別名 = コピー
+                var data = (originName == key) ? origin : origin.Clone();
+                data.Category = presetData.Category;
+                newPresets[key] = data;
+            }
+            else
+            {
+                // 完全新規
+                newPresets[key] = new RatingPresetData { Category = presetData.Category };
+            }
+        }
+
+        presets.Clear();
+        foreach (var kv in newPresets)
+            presets[kv.Key] = kv.Value;
+
+        currentPreset = dlg.Result.CurrentPreset;
+        onDone();
+    }
+
+    private void BuildJudgmentLevelSelector()
+    {
+        AddSidebarLabel("判定レベル");
+        var panel = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+
+        for (int i = 0; i <= 8; i++)
+        {
+            var level = i;
+            var isActive = _ratingJudgmentLevel == level;
+            var btn = new Button
+            {
+                Content = $"{i}→{i + 1}",
+                Padding = new Thickness(4, 2, 4, 2),
+                Margin = new Thickness(0, 0, 2, 2),
+                FontFamily = new FontFamily("Yu Gothic UI"),
+                FontSize = 12,
+                Background = isActive ? Theme.AccentBrush : Theme.PanelBrush,
+                Foreground = Theme.TextBrush,
+                BorderBrush = Theme.BorderBrush,
+                Cursor = Cursors.Hand
+            };
+            btn.Click += (_, _) =>
+            {
+                _ratingJudgmentLevel = level;
+                CloseArchiveForRating();
+                SaveStateOnly();
+                RebuildSidebar();
+            };
+            panel.Children.Add(btn);
+        }
+
+        LeftSidebar.Children.Add(panel);
+    }
+
+    private void BuildRatingSourceFolderButtons()
+    {
+        if (_currentRatingData == null) return;
+
+        var level = _ratingJudgmentLevel;
+
+        // Custom source folders
+        if (_currentRatingData.SourceFolders.TryGetValue(level, out var configured) && configured.Count > 0)
+        {
+            AddSidebarLabel("ソースフォルダ");
+            foreach (var folder in configured)
+                AddRatingFolderRow(folder);
+        }
+
+        // Rating folder for current level (always show)
+        var ratingFolder = _currentRatingData.RatingFolders[level];
+        if (!string.IsNullOrEmpty(ratingFolder))
+        {
+            AddSidebarLabel($"★{level} 評価中");
+            AddRatingFolderRow(ratingFolder);
+        }
+
+        // Confirmed folder for current level (always show)
+        var confirmedFolder = _currentRatingData.ConfirmedFolders[level];
+        if (!string.IsNullOrEmpty(confirmedFolder))
+        {
+            AddSidebarLabel($"★{level} 確定");
+            AddRatingFolderRow(confirmedFolder);
+        }
+
+        if (string.IsNullOrEmpty(ratingFolder) && string.IsNullOrEmpty(confirmedFolder)
+            && (configured == null || configured.Count == 0))
+        {
+            AddSidebarLabel($"ソース (★{level})");
+            AddSidebarText("(未設定)");
+        }
+    }
+
+    private void AddRatingFolderRow(string folder)
+    {
+        var f = folder;
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var folderBtn = CreateSidebarButton($"📂 {Path.GetFileName(f)}", () => OpenFromFolder(f));
+        folderBtn.ToolTip = f;
+        row.Children.Add(folderBtn);
+        row.Children.Add(CreateSidebarButton("🎲", () => OpenRandomFromFolder(f)));
+        LeftSidebar.Children.Add(row);
+    }
+
+    private void BuildRatingActionButtons()
+    {
+        if (_currentRatingData == null) return;
+
+        var level = _ratingJudgmentLevel;
+        AddSidebarLabel($"アクション (★{level}→)");
+
+        foreach (var (label, color, action) in RatingService.Buttons)
+        {
+            var desc = RatingService.GetTargetDescription(level, action);
+            if (desc == null) continue; // e.g., demote at rank 0
+
+            var targetFolder = RatingService.GetTargetFolder(_currentRatingData, level, action);
+            var act = action;
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            var btn = CreateSidebarButton($"{label} {desc}", () => ExecuteRatingAction(act), color);
+            btn.MinWidth = 120;
+            btn.IsEnabled = targetFolder != null;
+            if (targetFolder != null)
+                btn.ToolTip = targetFolder;
+            else
+                btn.ToolTip = "(移動先フォルダ未設定)";
+            row.Children.Add(btn);
+
+            LeftSidebar.Children.Add(row);
+
+            if (targetFolder != null)
+                AddSidebarText($"  → {targetFolder}");
+        }
+    }
+
+    private async void ExecuteRatingAction(RatingAction action)
+    {
+        if (_archivePath == null || _currentRatingData == null) return;
+
+        var targetFolder = RatingService.GetTargetFolder(_currentRatingData, _ratingJudgmentLevel, action);
+        if (targetFolder == null) return;
+
+        var src = _archivePath;
+        var dst = Path.Combine(targetFolder, Path.GetFileName(src));
+
+        try
+        {
+            Directory.CreateDirectory(targetFolder);
+
+            if (File.Exists(dst))
+            {
+                var resolution = ResolveConflict(src, dst);
+                if (resolution == "skip") return;
+                if (resolution == "rename") dst = MakeUniquePath(dst);
+            }
+
+            var msg = $"移動中: {Path.GetFileName(src)}...";
+            await MoveFileWithProgress(src, dst, msg);
+            File.SetLastWriteTime(dst, DateTime.Now);
+
+            SetStatus($"移動しました: {Path.GetFileName(dst)} → {Path.GetFileName(targetFolder)}");
+            AfterFileAction();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"ファイル操作に失敗しました:\n{ex.Message}");
+        }
+    }
+
+    private void BuildVideoRatingPresetSection()
+    {
+        AddSidebarLabel("プリセット");
+
+        if (!_presetTabFilters.ContainsKey("video"))
+            _presetTabFilters["video"] = null;
+
+        var tabFilter = _presetTabFilters["video"];
+
+        if (tabFilter == null && !string.IsNullOrEmpty(_videoRatingCurrentPreset)
+            && _videoRatingPresets.TryGetValue(_videoRatingCurrentPreset, out var curPreset)
+            && !string.IsNullOrEmpty(curPreset.Category))
+        {
+            tabFilter = curPreset.Category;
+            _presetTabFilters["video"] = tabFilter;
+        }
+        tabFilter ??= "";
+
+        var categories = _videoRatingPresets.Values
+            .Select(p => p.Category)
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        if (categories.Count > 0)
+        {
+            var tabPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 2) };
+            foreach (var cat in categories)
+            {
+                var c = cat;
+                var tab = CreateTabButton(c, tabFilter == c, () =>
+                {
+                    _presetTabFilters["video"] = c;
+                    RebuildSidebar();
+                });
+                tabPanel.Children.Add(tab);
+            }
+            var allTab = CreateTabButton("すべて", string.IsNullOrEmpty(tabFilter), () =>
+            {
+                _presetTabFilters["video"] = "";
+                RebuildSidebar();
+            });
+            tabPanel.Children.Add(allTab);
+            LeftSidebar.Children.Add(tabPanel);
+        }
+
+        var filteredPresets = string.IsNullOrEmpty(tabFilter)
+            ? _videoRatingPresets.Keys.ToList()
+            : _videoRatingPresets.Where(p => p.Value.Category == tabFilter).Select(p => p.Key).ToList();
+
+        var listBox = new System.Windows.Controls.ListBox
+        {
+            Background = Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
+            FontFamily = new FontFamily("Yu Gothic UI"),
+            FontSize = 14,
+            MaxHeight = 120,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+
+        foreach (var name in filteredPresets)
+        {
+            listBox.Items.Add(new ListBoxItem { Content = name, Tag = name });
+            if (name == _videoRatingCurrentPreset)
+                listBox.SelectedIndex = listBox.Items.Count - 1;
+        }
+
+        listBox.SelectionChanged += (_, _) =>
+        {
+            if (listBox.SelectedItem is ListBoxItem item && item.Tag is string name && name != _videoRatingCurrentPreset)
+            {
+                _videoRatingCurrentPreset = name;
+                LoadVideoRatingPreset();
+                CloseVideoForRating();
+                SaveStateOnly();
+                RebuildSidebar();
+            }
+        };
+
+        if (listBox.SelectedIndex >= 0)
+            listBox.Loaded += (_, _) => listBox.ScrollIntoView(listBox.SelectedItem);
+
+        LeftSidebar.Children.Add(listBox);
+
+        var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", () => ManageVideoRatingPresets());
+        manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        manageBtn.Margin = new Thickness(0, 0, 0, 4);
+        LeftSidebar.Children.Add(manageBtn);
+    }
+
+    private void ManageVideoRatingPresets()
+    {
+        ApplyRatingPresetManager(_videoRatingPresets, ref _videoRatingCurrentPreset, () =>
+        {
+            LoadVideoRatingPreset();
+            SavePresets();
+            RebuildSidebar();
+        });
+    }
+
+    private void BuildVideoJudgmentLevelSelector()
+    {
+        AddSidebarLabel("判定レベル");
+        var panel = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+
+        for (int i = 0; i <= 8; i++)
+        {
+            var level = i;
+            var isActive = _videoRatingJudgmentLevel == level;
+            var btn = new Button
+            {
+                Content = $"{i}→{i + 1}",
+                Padding = new Thickness(4, 2, 4, 2),
+                Margin = new Thickness(0, 0, 2, 2),
+                FontFamily = new FontFamily("Yu Gothic UI"),
+                FontSize = 12,
+                Background = isActive ? Theme.AccentBrush : Theme.PanelBrush,
+                Foreground = Theme.TextBrush,
+                BorderBrush = Theme.BorderBrush,
+                Cursor = Cursors.Hand
+            };
+            btn.Click += (_, _) =>
+            {
+                _videoRatingJudgmentLevel = level;
+                CloseVideoForRating();
+                SaveStateOnly();
+                RebuildSidebar();
+            };
+            panel.Children.Add(btn);
+        }
+
+        LeftSidebar.Children.Add(panel);
+    }
+
+    private void OpenVideoRatingSettings()
+    {
+        if (_currentVideoRatingData == null) return;
+
+        var dlg = new RatingSettingsDialog(_currentVideoRatingData.Clone(), _videoRatingJudgmentLevel);
+        dlg.Owner = this;
+        if (dlg.ShowDialog() == true && dlg.Result != null)
+        {
+            _currentVideoRatingData = dlg.Result;
+            if (_videoRatingPresets.ContainsKey(_videoRatingCurrentPreset))
+                _videoRatingPresets[_videoRatingCurrentPreset] = dlg.Result;
+            SavePresets();
+            RebuildSidebar();
+        }
+    }
+
+    private void BuildVideoRatingActionButtons()
+    {
+        if (_currentVideoRatingData == null) return;
+
+        var level = _videoRatingJudgmentLevel;
+        AddSidebarLabel($"アクション (★{level}→)");
+
+        foreach (var (label, color, action) in RatingService.Buttons)
+        {
+            var desc = RatingService.GetTargetDescription(level, action);
+            if (desc == null) continue;
+
+            var targetFolder = RatingService.GetTargetFolder(_currentVideoRatingData, level, action);
+            var act = action;
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            var btn = CreateSidebarButton($"{label} {desc}", () => ExecuteVideoRatingAction(act), color);
+            btn.MinWidth = 120;
+            btn.IsEnabled = targetFolder != null;
+            btn.ToolTip = targetFolder ?? "(移動先フォルダ未設定)";
+            row.Children.Add(btn);
+
+            LeftSidebar.Children.Add(row);
+
+            if (targetFolder != null)
+                AddSidebarText($"  → {targetFolder}");
+        }
+    }
+
+    private void BuildVideoRatingSourceFolderButtons()
+    {
+        if (_currentVideoRatingData == null) return;
+
+        var level = _videoRatingJudgmentLevel;
+
+        // Custom source folders
+        if (_currentVideoRatingData.SourceFolders.TryGetValue(level, out var configured) && configured.Count > 0)
+        {
+            AddSidebarLabel("ソースフォルダ");
+            foreach (var folder in configured)
+                AddVideoRatingFolderRow(folder);
+        }
+
+        // Rating folder for current level
+        var ratingFolder = _currentVideoRatingData.RatingFolders[level];
+        if (!string.IsNullOrEmpty(ratingFolder))
+        {
+            AddSidebarLabel($"★{level} 評価中");
+            AddVideoRatingFolderRow(ratingFolder);
+        }
+
+        // Confirmed folder for current level
+        var confirmedFolder = _currentVideoRatingData.ConfirmedFolders[level];
+        if (!string.IsNullOrEmpty(confirmedFolder))
+        {
+            AddSidebarLabel($"★{level} 確定");
+            AddVideoRatingFolderRow(confirmedFolder);
+        }
+
+        if (string.IsNullOrEmpty(ratingFolder) && string.IsNullOrEmpty(confirmedFolder)
+            && (configured == null || configured.Count == 0))
+        {
+            AddSidebarLabel($"ソース (★{level})");
+            AddSidebarText("(未設定)");
+        }
+    }
+
+    private void AddVideoRatingFolderRow(string folder)
+    {
+        var f = folder;
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var folderBtn = CreateSidebarButton($"📂 {Path.GetFileName(f)}", () => OpenVideoFromFolder(f));
+        folderBtn.ToolTip = f;
+        row.Children.Add(folderBtn);
+        row.Children.Add(CreateSidebarButton("🎲", () => OpenRandomVideoFromFolder(f)));
+        LeftSidebar.Children.Add(row);
+    }
+
+    private async void ExecuteVideoRatingAction(RatingAction action)
+    {
+        if (_videoPath == null || _currentVideoRatingData == null) return;
+
+        var targetFolder = RatingService.GetTargetFolder(_currentVideoRatingData, _videoRatingJudgmentLevel, action);
+        if (targetFolder == null) return;
+
+        var src = _videoPath;
+        var dst = Path.Combine(targetFolder, Path.GetFileName(src));
+
+        try
+        {
+            Directory.CreateDirectory(targetFolder);
+
+            if (File.Exists(dst))
+            {
+                var resolution = ResolveConflict(src, dst);
+                if (resolution == "skip") return;
+                if (resolution == "rename") dst = MakeUniquePath(dst);
+            }
+
+            StopVideo();
+
+            var msg = $"移動中: {Path.GetFileName(src)}...";
+            await MoveFileWithProgress(src, dst, msg);
+            File.SetLastWriteTime(dst, DateTime.Now);
+
+            SetStatus($"移動しました: {Path.GetFileName(dst)} → {Path.GetFileName(targetFolder)}");
+            AfterVideoAction();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"ファイル操作に失敗しました:\n{ex.Message}");
+        }
+    }
+
+    private void CloseVideoForRating()
+    {
+        if (_videoPath != null)
+        {
+            StopVideo();
+            _videoPath = null;
+            VideoOverlay.Visibility = Visibility.Collapsed;
+        }
+        _videoFiles.Clear();
+        _currentVideoIndex = -1;
+        EmptyMessage.Visibility = Visibility.Visible;
+    }
+
+    private void OpenRatingSettings()
+    {
+        if (_currentRatingData == null) return;
+
+        var dlg = new RatingSettingsDialog(_currentRatingData.Clone(), _ratingJudgmentLevel);
+        dlg.Owner = this;
+        if (dlg.ShowDialog() == true && dlg.Result != null)
+        {
+            _currentRatingData = dlg.Result;
+            if (_ratingPresets.ContainsKey(_ratingCurrentPreset))
+                _ratingPresets[_ratingCurrentPreset] = dlg.Result;
+            SavePresets();
+            RebuildSidebar();
+        }
     }
 
     // Sidebar helpers
@@ -2731,6 +3349,8 @@ public partial class MainWindow : Window
                     e.Handled = true;
                 }
                 break;
+
+
         }
     }
 

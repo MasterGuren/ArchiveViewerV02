@@ -80,12 +80,8 @@ public class ConfigService
         if (root.TryGetProperty("state", out _)) return;
 
         // フラットなキーからStateを構築
-        if (root.TryGetProperty("current_preset", out var cp))
-            config.State.CurrentPreset = cp.GetString() ?? "";
         if (root.TryGetProperty("extract_current_preset", out var ecp))
             config.State.ExtractCurrentPreset = ecp.GetString() ?? "";
-        if (root.TryGetProperty("video_current_preset", out var vcp))
-            config.State.VideoCurrentPreset = vcp.GetString() ?? "";
         if (root.TryGetProperty("extract_output_folder", out var eof))
             config.State.ExtractOutputFolder = eof.GetString() ?? "";
         if (root.TryGetProperty("folder_sort", out var fs))
@@ -100,16 +96,17 @@ public class ConfigService
             config.State.LastMode = lm.GetString() ?? "browse";
 
         // プリセット順序をDictionaryのキー順から取得
-        config.State.PresetOrder = [.. config.Presets.Keys];
         config.State.ExtractPresetOrder = [.. config.ExtractPresets.Keys];
-        config.State.VideoPresetOrder = [.. config.VideoPresets.Keys];
         config.State.ImagePresetOrder = [.. config.ImagePresets.Keys];
     }
 
     private static AppConfig MigrateLegacyConfig(JsonElement root)
     {
         var config = CreateDefault();
-        var preset = config.Presets["デフォルト"];
+        var preset = new PresetData
+        {
+            Actions = GetDefaultActions()
+        };
 
         var legacyMapping = new Dictionary<string, int>
         {
@@ -135,9 +132,7 @@ public class ConfigService
         if (root.TryGetProperty("trash_folder", out var trashFolder) && trashFolder.ValueKind == JsonValueKind.String)
             preset.TrashFolder = trashFolder.GetString() ?? "";
 
-        config.Presets["デフォルト"] = preset;
-        config.ExtractPresets["デフォルト"] = preset.Clone();
-        config.VideoPresets["デフォルト"] = preset.Clone();
+        config.ExtractPresets["デフォルト"] = preset;
         config.ImagePresets["デフォルト"] = preset.Clone();
         return config;
     }
@@ -202,14 +197,14 @@ public class ConfigService
                 new() { Label = "2段階昇格", Color = "#f59e0b" }
             ]
         };
-        config.Presets["デフォルト"] = defaultPreset;
-        config.State.CurrentPreset = "デフォルト";
-        config.ExtractPresets["デフォルト"] = defaultPreset.Clone();
+        config.ExtractPresets["デフォルト"] = defaultPreset;
         config.State.ExtractCurrentPreset = "デフォルト";
-        config.VideoPresets["デフォルト"] = defaultPreset.Clone();
-        config.State.VideoCurrentPreset = "デフォルト";
         config.ImagePresets["デフォルト"] = defaultPreset.Clone();
         config.State.ImageCurrentPreset = "デフォルト";
+        config.RatingPresets["デフォルト"] = new RatingPresetData();
+        config.State.RatingCurrentPreset = "デフォルト";
+        config.VideoRatingPresets["デフォルト"] = new RatingPresetData();
+        config.State.VideoRatingCurrentPreset = "デフォルト";
         return config;
     }
 

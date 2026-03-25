@@ -100,10 +100,11 @@
             <DockPanel Margin="8,0">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="📦" FontFamily="Segoe UI Emoji" FontSize="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <ToggleButton x:Name="BtnBrowse" Content="閲覧" Style="{StaticResource ModeButton}" Click="BtnBrowse_Click" IsChecked="True" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnRating" Content="閲覧" Style="{StaticResource ModeButton}" Click="BtnRating_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnExtract" Content="抽出" Style="{StaticResource ModeButton}" Click="BtnExtract_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnVideo" Content="動画" Style="{StaticResource ModeButton}" Click="BtnVideo_Click" Margin="0,0,2,0"/>
-                    <ToggleButton x:Name="BtnImage" Content="画像" Style="{StaticResource ModeButton}" Click="BtnImage_Click" Margin="0,0,12,0"/>
+                    <ToggleButton x:Name="BtnImage" Content="画像" Style="{StaticResource ModeButton}" Click="BtnImage_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnBrowse" Content="旧閲覧" Style="{StaticResource ModeButton}" Click="BtnBrowse_Click" Margin="0,0,12,0" Visibility="Collapsed"/>
 
                     <Border Width="1" Background="{DynamicResource ThemeBorder}" Margin="0,8"/>
 

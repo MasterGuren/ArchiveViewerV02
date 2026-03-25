@@ -5,17 +5,17 @@ namespace ArchiveViewer.Models;
 public class AppConfig
 {
     // === プリセットデータ（「保存」ボタンでのみ書き込み） ===
-    [JsonPropertyName("presets")]
-    public Dictionary<string, PresetData> Presets { get; set; } = new();
-
     [JsonPropertyName("extract_presets")]
     public Dictionary<string, PresetData> ExtractPresets { get; set; } = new();
 
-    [JsonPropertyName("video_presets")]
-    public Dictionary<string, PresetData> VideoPresets { get; set; } = new();
-
     [JsonPropertyName("image_presets")]
     public Dictionary<string, PresetData> ImagePresets { get; set; } = new();
+
+    [JsonPropertyName("rating_presets")]
+    public Dictionary<string, RatingPresetData> RatingPresets { get; set; } = new();
+
+    [JsonPropertyName("video_rating_presets")]
+    public Dictionary<string, RatingPresetData> VideoRatingPresets { get; set; } = new();
 
     // === 状態（順序・選択・UI設定。自由に保存OK） ===
     [JsonPropertyName("state")]
@@ -24,23 +24,11 @@ public class AppConfig
 
 public class AppState
 {
-    [JsonPropertyName("current_preset")]
-    public string CurrentPreset { get; set; } = "";
-
     [JsonPropertyName("extract_current_preset")]
     public string ExtractCurrentPreset { get; set; } = "";
 
-    [JsonPropertyName("video_current_preset")]
-    public string VideoCurrentPreset { get; set; } = "";
-
-    [JsonPropertyName("preset_order")]
-    public List<string> PresetOrder { get; set; } = [];
-
     [JsonPropertyName("extract_preset_order")]
     public List<string> ExtractPresetOrder { get; set; } = [];
-
-    [JsonPropertyName("video_preset_order")]
-    public List<string> VideoPresetOrder { get; set; } = [];
 
     [JsonPropertyName("image_current_preset")]
     public string ImageCurrentPreset { get; set; } = "";
@@ -62,6 +50,24 @@ public class AppState
 
     [JsonPropertyName("video_end_action")]
     public string VideoEndAction { get; set; } = "stop";
+
+    [JsonPropertyName("rating_current_preset")]
+    public string RatingCurrentPreset { get; set; } = "";
+
+    [JsonPropertyName("rating_preset_order")]
+    public List<string> RatingPresetOrder { get; set; } = [];
+
+    [JsonPropertyName("rating_judgment_level")]
+    public int RatingJudgmentLevel { get; set; } = 0;
+
+    [JsonPropertyName("video_rating_current_preset")]
+    public string VideoRatingCurrentPreset { get; set; } = "";
+
+    [JsonPropertyName("video_rating_preset_order")]
+    public List<string> VideoRatingPresetOrder { get; set; } = [];
+
+    [JsonPropertyName("video_rating_judgment_level")]
+    public int VideoRatingJudgmentLevel { get; set; } = 0;
 
     [JsonPropertyName("last_mode")]
     public string LastMode { get; set; } = "browse";
