@@ -20,6 +20,10 @@ public class RatingPresetData
     [JsonPropertyName("source_folders")]
     public Dictionary<int, List<string>> SourceFolders { get; set; } = new();
 
+    /// <summary>Folder for "category move" action (only shown at 0→1 judgment level)</summary>
+    [JsonPropertyName("category_move_folder")]
+    public string CategoryMoveFolder { get; set; } = "";
+
     [JsonPropertyName("category")]
     public string Category { get; set; } = "";
 
@@ -33,6 +37,7 @@ public class RatingPresetData
             SourceFolders = SourceFolders.ToDictionary(
                 kv => kv.Key,
                 kv => new List<string>(kv.Value)),
+            CategoryMoveFolder = CategoryMoveFolder,
             Category = Category
         };
     }

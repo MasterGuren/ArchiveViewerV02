@@ -4,12 +4,13 @@ namespace ArchiveViewer.Services;
 
 public enum RatingAction
 {
-    Shootdown,  // +3
-    Promote2,   // +2
-    Promote1,   // +1
-    Stay,       // → confirmed folder
-    Demote1,    // -1
-    Delete      // → delete folder
+    Shootdown,      // +3
+    Promote2,       // +2
+    Promote1,       // +1
+    Stay,           // → confirmed folder
+    Demote1,        // -1
+    Delete,         // → delete folder
+    CategoryMove    // → category move folder (0→1 only)
 }
 
 public static class RatingService
@@ -20,6 +21,7 @@ public static class RatingService
         ("▲▲2昇格", "#86efac", RatingAction.Promote2),
         ("▲昇格",   "#22c55e", RatingAction.Promote1),
         ("▶ステイ",  "#3b82f6", RatingAction.Stay),
+        ("▶▲カテゴリー移動", "#14b8a6", RatingAction.CategoryMove),
         ("▼降格",   "#ef4444", RatingAction.Demote1),
         ("✖削除",   "#7f1d1d", RatingAction.Delete),
     ];
@@ -35,6 +37,7 @@ public static class RatingService
             RatingAction.Promote2 => GetRatingFolder(preset, Math.Min(currentRank + 2, 9)),
             RatingAction.Promote1 => GetRatingFolder(preset, Math.Min(currentRank + 1, 9)),
             RatingAction.Stay => GetConfirmedFolder(preset, currentRank),
+            RatingAction.CategoryMove => currentRank == 0 ? GetCategoryMoveFolder(preset) : null,
             RatingAction.Demote1 => currentRank <= 0 ? null : GetRatingFolder(preset, currentRank - 1),
             RatingAction.Delete => GetDeleteFolder(preset, currentRank),
             _ => null
@@ -52,6 +55,7 @@ public static class RatingService
             RatingAction.Promote2 => $"+2 → ★{Math.Min(currentRank + 2, 9)}",
             RatingAction.Promote1 => $"+1 → ★{Math.Min(currentRank + 1, 9)}",
             RatingAction.Stay => $"→ ★{currentRank}確",
+            RatingAction.CategoryMove => currentRank == 0 ? "→ カテゴリー" : null,
             RatingAction.Demote1 => currentRank <= 0 ? null : $"-1 → ★{currentRank - 1}",
             RatingAction.Delete => "→ 削除",
             _ => null
@@ -77,5 +81,10 @@ public static class RatingService
         if (rank < 0 || rank >= preset.DeleteFolders.Count) return null;
         var folder = preset.DeleteFolders[rank];
         return string.IsNullOrEmpty(folder) ? null : folder;
+    }
+
+    private static string? GetCategoryMoveFolder(RatingPresetData preset)
+    {
+        return string.IsNullOrEmpty(preset.CategoryMoveFolder) ? null : preset.CategoryMoveFolder;
     }
 }

@@ -56,6 +56,13 @@ public partial class RatingSettingsDialog : Window
 
         AddSeparator();
 
+        // === Category Move Folder (0→1 only) ===
+        BuildSectionHeader("カテゴリー移動フォルダ (0→1判定のみ)", () => Save());
+        AddHelpText("0→1判定時に表示される「▶▲カテゴリー移動」ボタンの移動先フォルダです。");
+        BuildFolderRow("移動先", _data.CategoryMoveFolder, (path) => _data.CategoryMoveFolder = path);
+
+        AddSeparator();
+
         // === Source Folders per Judgment Level ===
         BuildSectionHeader($"ソースフォルダ (判定レベル別)", () => Save());
         AddHelpText("各判定レベルで使うソースフォルダを設定。未設定の場合は対応する評価中フォルダが使われます。");
