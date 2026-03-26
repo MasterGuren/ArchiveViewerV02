@@ -101,8 +101,13 @@
 
         <!-- HEADER -->
         <Border x:Name="HeaderBar" Grid.Row="0" Background="{DynamicResource ThemePanel}" BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,0,1">
-            <DockPanel Margin="8,0">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+            <Grid Margin="8,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="📦" FontFamily="Segoe UI Emoji" FontSize="20" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <ToggleButton x:Name="BtnRating" Content="閲覧" Style="{StaticResource ModeButton}" Click="BtnRating_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnExtract" Content="抽出" Style="{StaticResource ModeButton}" Click="BtnExtract_Click" Margin="0,0,2,0"/>
@@ -131,30 +136,46 @@
                             Click="BtnClearSelection_Click" Visibility="Collapsed" Margin="2,0,0,0"/>
                 </StackPanel>
 
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <TextBlock x:Name="TxtPrevFile" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="14"
-                               VerticalAlignment="Center" Margin="0,0,4,0"
-                               MaxWidth="200" TextTrimming="CharacterEllipsis"/>
-                    <Button x:Name="BtnPrev" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
-                            Padding="6,4" Margin="0,0,4,0"/>
-                    <TextBlock x:Name="TxtCurrentFile" Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
-                               VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,2,0"
-                               MaxWidth="350" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock x:Name="TxtFilePosition" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
-                               VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <Button x:Name="BtnNext" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
-                            Padding="6,4" Margin="0,0,4,0"/>
-                    <TextBlock x:Name="TxtNextFile" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="14"
-                               VerticalAlignment="Center"
-                               MaxWidth="200" TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-            </DockPanel>
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <!-- 前ファイル名（右寄せ、余白に収まる） -->
+                    <TextBlock x:Name="TxtPrevFile" Grid.Column="0" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="14"
+                               VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,4,0"
+                               TextTrimming="CharacterEllipsis"/>
+                    <!-- ◀ ボタン（中央固定） -->
+                    <Button x:Name="BtnPrev" Grid.Column="1" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
+                            Padding="6,4"/>
+                    <!-- 現在ファイル名＋位置（中央固定幅） -->
+                    <Border Grid.Column="2" Width="360" Margin="4,0">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtCurrentFile" Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
+                                       VerticalAlignment="Center" FontWeight="Bold"
+                                       MaxWidth="290" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="TxtFilePosition" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
+                                       VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <!-- ▶ ボタン（中央固定） -->
+                    <Button x:Name="BtnNext" Grid.Column="3" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
+                            Padding="6,4"/>
+                    <!-- 次ファイル名（左寄せ、余白に収まる） -->
+                    <TextBlock x:Name="TxtNextFile" Grid.Column="4" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="14"
+                               VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
+                               TextTrimming="CharacterEllipsis"/>
+                </Grid>
+            </Grid>
         </Border>
 
         <!-- MAIN CONTENT -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300"/>
+                <ColumnDefinition x:Name="LeftSidebarCol" Width="300"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition x:Name="RightSidebarCol" Width="0"/>
             </Grid.ColumnDefinitions>
@@ -215,53 +236,58 @@
 
                     <Grid x:Name="VideoViewHost" Grid.Row="0" Background="Black"/>
 
-                    <Border Grid.Row="1" Background="{DynamicResource ThemePanel}" Padding="8">
+                    <Border x:Name="VideoControlsBar" Grid.Row="1" Background="{DynamicResource ThemePanel}" Padding="4,2">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,4">
+                            <!-- Row 1: Seek bar + time -->
+                            <DockPanel Margin="0,0,0,2">
                                 <TextBlock x:Name="VideoTimeText" DockPanel.Dock="Right" Foreground="{DynamicResource ThemeSubtext}"
-                                           FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center"
+                                           FontFamily="Yu Gothic UI" FontSize="12" VerticalAlignment="Center"
                                            Margin="8,0,0,0" Text="00:00 / 00:00"/>
-                                <Canvas x:Name="SeekBarCanvas" Height="20" Background="Transparent"
+                                <Canvas x:Name="SeekBarCanvas" Height="16" Background="Transparent"
                                         MouseLeftButtonDown="SeekBar_MouseDown" MouseMove="SeekBar_MouseMove"
                                         MouseLeftButtonUp="SeekBar_MouseUp"/>
                             </DockPanel>
-
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
-                                <Button Content="⏮" Style="{StaticResource AccentButton}" Click="BtnVideoPrev_Click" Padding="8,4" Margin="4,0" ToolTip="前の動画" FontSize="14"/>
-                                <Button Content="⏪10m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-600" Padding="4,2" Margin="1,0"/>
-                                <Button Content="⏪3m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-180" Padding="4,2" Margin="1,0"/>
-                                <Button Content="⏪30s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-30" Padding="4,2" Margin="1,0"/>
-                                <Button Content="⏪10s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-10" Padding="4,2" Margin="1,0"/>
-                                <Button x:Name="BtnPlayPause" Content="▶" Style="{StaticResource AccentButton}" Click="BtnPlayPause_Click" Padding="12,4" Margin="4,0"/>
-                                <Button Content="10s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="10" Padding="4,2" Margin="1,0"/>
-                                <Button Content="30s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="30" Padding="4,2" Margin="1,0"/>
-                                <Button Content="3m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="180" Padding="4,2" Margin="1,0"/>
-                                <Button Content="10m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="600" Padding="4,2" Margin="1,0"/>
-                                <Button Content="⏭" Style="{StaticResource AccentButton}" Click="BtnVideoNext_Click" Padding="8,4" Margin="4,0" ToolTip="次の動画" FontSize="14"/>
-                            </StackPanel>
-
+                            <!-- Row 2: Controls -->
                             <DockPanel>
-                                <Button Content="✕ 閉じる" Style="{StaticResource DarkButton}" DockPanel.Dock="Right"
-                                        Click="BtnCloseVideo_Click" Padding="8,2"/>
+                                <Button Content="✕" Style="{StaticResource DarkButton}" DockPanel.Dock="Right"
+                                        Click="BtnCloseVideo_Click" Padding="6,1" Margin="4,0,0,0" ToolTip="閉じる"/>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="音量:" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
-                                               VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                    <Slider x:Name="VolumeSlider" Width="100" Minimum="0" Maximum="100"
-                                            Value="80" ValueChanged="VolumeSlider_ValueChanged" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="VolumeText" Text="80%" Foreground="{DynamicResource ThemeSubtext}"
-                                               FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <Button Content="⏮" Style="{StaticResource AccentButton}" Click="BtnVideoPrev_Click" Padding="6,1" Margin="0,0,2,0" ToolTip="前の動画" FontSize="13"/>
+                                    <Button Content="⏪10m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-600" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="⏪3m" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-180" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="⏪30s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-30" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="⏪10s" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="-10" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button x:Name="BtnPlayPause" Content="▶" Style="{StaticResource AccentButton}" Click="BtnPlayPause_Click" Padding="10,1" Margin="3,0" FontSize="13"/>
+                                    <Button Content="10s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="10" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="30s⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="30" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="3m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="180" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="10m⏩" Style="{StaticResource DarkButton}" Click="VideoSkip_Click" Tag="600" Padding="3,1" Margin="1,0" FontSize="11"/>
+                                    <Button Content="⏭" Style="{StaticResource AccentButton}" Click="BtnVideoNext_Click" Padding="6,1" Margin="2,0,6,0" ToolTip="次の動画" FontSize="13"/>
 
-                                    <TextBlock Text="終了時:" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
-                                               VerticalAlignment="Center" Margin="16,0,4,0"/>
+                                    <Button x:Name="BtnMute" Content="🔊" Style="{StaticResource DarkButton}" Click="BtnMute_Click"
+                                            Padding="3,1" Margin="0,0,2,0" FontFamily="Segoe UI Emoji" FontSize="12" ToolTip="ミュート切替"/>
+                                    <Slider x:Name="VolumeSlider" Width="80" Minimum="0" Maximum="100"
+                                            Value="80" ValueChanged="VolumeSlider_ValueChanged" VerticalAlignment="Center"
+                                            PreviewMouseWheel="VolumeSlider_MouseWheel"/>
+                                    <TextBlock x:Name="VolumeText" Text="80%" Foreground="{DynamicResource ThemeSubtext}"
+                                               FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="2,0,0,0"/>
+
+                                    <TextBlock Text="終了:" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"
+                                               VerticalAlignment="Center" Margin="10,0,2,0"/>
                                     <RadioButton x:Name="RbEndStop" Content="停止" GroupName="VideoEnd" IsChecked="True"
                                                  Click="VideoEndAction_Click" Tag="stop" VerticalAlignment="Center" Margin="2,0"
-                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13"/>
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
                                     <RadioButton x:Name="RbEndLoop" Content="リピート" GroupName="VideoEnd"
                                                  Click="VideoEndAction_Click" Tag="loop" VerticalAlignment="Center" Margin="2,0"
-                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13"/>
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
                                     <RadioButton x:Name="RbEndNext" Content="次の動画" GroupName="VideoEnd"
                                                  Click="VideoEndAction_Click" Tag="next" VerticalAlignment="Center" Margin="2,0"
-                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13"/>
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+
+                                    <TextBox x:Name="VideoFileName" IsReadOnly="True" Background="Transparent"
+                                             Foreground="{DynamicResource ThemeSubtext}" BorderThickness="0"
+                                             FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"
+                                             Margin="10,0,0,0" MaxWidth="300" TextWrapping="NoWrap" Cursor="IBeam"/>
                                 </StackPanel>
                             </DockPanel>
                         </StackPanel>

@@ -62,9 +62,12 @@ public partial class MainWindow : Window
     private DispatcherTimer? _videoTimer;
     private bool _seekDragging;
     private int _videoVolume = 80;
+    private int _volumeBeforeMute = 80;
+    private bool _isMuted;
     private string _videoEndAction = "stop"; // "stop", "loop", "next"
     private bool _videoEndHandled;
     private LibVLCSharp.WPF.VideoView? _videoView; // created/destroyed dynamically
+    private bool _videoTheaterMode;
 
     // Presets
     private Dictionary<string, PresetData> _extractPresets = new();
@@ -93,6 +96,11 @@ public partial class MainWindow : Window
     private string _videoRatingCurrentPreset = "";
     private RatingPresetData? _currentVideoRatingData;
     private int _videoRatingJudgmentLevel = 0;
+
+    // Undo
+    private string? _undoSrc; // 移動先（現在のパス）
+    private string? _undoDst; // 移動元（戻す先）
+    private string? _undoMode; // 移動時のモード
 
     // Loading
     private CancellationTokenSource? _loadCts;
@@ -251,8 +259,19 @@ public partial class MainWindow : Window
 
     // ======== MODE SWITCHING ========
 
+    private void ClearStatusBar()
+    {
+        SetStatus("");
+        TxtFileSize.Text = "";
+        TxtCurrentFile.Text = "";
+        TxtFilePosition.Text = "";
+        TxtPrevFile.Text = "";
+        TxtNextFile.Text = "";
+    }
+
     private void SwitchMode(string mode)
     {
+        ClearStatusBar();
         _mode = mode;
         BtnBrowse.IsChecked = mode == "browse";
         BtnExtract.IsChecked = mode == "extract";
@@ -280,13 +299,11 @@ public partial class MainWindow : Window
             VideoOverlay.Visibility = isVideo && _videoPath != null ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        // Clear state when switching between image and archive modes
+        // モード切替時にコンテンツを閉じる
         bool isImage = mode == "image";
-        bool isRating = mode == "rating";
-        bool isBrowseOrExtract = mode == "browse" || mode == "extract" || isRating;
-        if (isImage && _archivePath != null)
+        if (_viewerOpen) CloseViewer();
+        if (_archivePath != null)
         {
-            // Switching to image mode: clear archive data
             _archivePath = null;
             _imageNames.Clear();
             _thumbData = null;
@@ -297,11 +314,9 @@ public partial class MainWindow : Window
             _selectEnd = null;
             _folderArchives.Clear();
             _currentArchiveIndex = -1;
-            if (_viewerOpen) CloseViewer();
         }
-        else if (isBrowseOrExtract && _imageFolderPath != null)
+        if (_imageFolderPath != null)
         {
-            // Switching to browse/extract: clear image data
             _imageFolderPath = null;
             _imagePaths.Clear();
             _imageNames.Clear();
@@ -311,33 +326,18 @@ public partial class MainWindow : Window
             _cards.Clear();
             _selectStart = null;
             _selectEnd = null;
-            if (_viewerOpen) CloseViewer();
         }
 
         // Show grid for browse/extract/image
         GridScroller.Visibility = isVideo ? Visibility.Collapsed : Visibility.Visible;
 
-        if (isVideo)
+        EmptyMessage.Visibility = isVideo && _videoPath != null ? Visibility.Collapsed : Visibility.Visible;
+        if (EmptyMessage.Visibility == Visibility.Visible)
         {
-            EmptyMessage.Visibility = _videoPath != null ? Visibility.Collapsed : Visibility.Visible;
-            if (EmptyMessage.Visibility == Visibility.Visible)
-            {
-                var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
-                if (tb != null) tb.Text = "動画ファイルを「開く」で選択";
-            }
-        }
-        else if (mode == "image")
-        {
-            EmptyMessage.Visibility = _imageFolderPath != null ? Visibility.Collapsed : Visibility.Visible;
-            if (EmptyMessage.Visibility == Visibility.Visible)
-            {
-                var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
-                if (tb != null) tb.Text = "画像フォルダを「開く」で選択またはドロップ";
-            }
-        }
-        else
-        {
-            EmptyMessage.Visibility = _archivePath != null ? Visibility.Collapsed : Visibility.Visible;
+            var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
+            if (tb != null) tb.Text = isVideo ? "動画ファイルを「開く」で選択"
+                : isImage ? "画像フォルダを「開く」で選択またはドロップ"
+                : "アーカイブをドロップまたは「開く」で選択";
         }
 
         RebuildSidebar();
@@ -486,7 +486,7 @@ public partial class MainWindow : Window
 
         // Preset
         BuildPresetSection(_extractCurrentPreset, _extractPresets,
-            (name) => { _extractCurrentPreset = name; LoadPreset(name, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder); SaveStateOnly(); RebuildSidebar(); },
+            (name) => { _extractCurrentPreset = name; LoadPreset(name, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder); ClearStatusBar(); SaveStateOnly(); RebuildSidebar(); },
             () => ManagePresets(ref _extractCurrentPreset, ref _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder));
 
         // Settings button
@@ -502,6 +502,8 @@ public partial class MainWindow : Window
         BuildActionButtons(_extractActions, (a) => ExecuteAction(a));
 
         AddSidebarSeparator();
+
+        BuildUndoButton();
 
         // Source folders (open only)
         BuildFolderButtons("ソースフォルダ", _extractSourceFolders,
@@ -542,6 +544,8 @@ public partial class MainWindow : Window
 
         AddSidebarSeparator();
 
+        BuildUndoButton();
+
         // Source folders for current judgment level (video)
         BuildVideoRatingSourceFolderButtons();
 
@@ -564,7 +568,7 @@ public partial class MainWindow : Window
 
         // Preset
         BuildPresetSection(_imageCurrentPreset, _imagePresets,
-            (name) => { _imageCurrentPreset = name; LoadPreset(name, _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder); SaveStateOnly(); RebuildSidebar(); },
+            (name) => { _imageCurrentPreset = name; LoadPreset(name, _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder); ClearStatusBar(); SaveStateOnly(); RebuildSidebar(); },
             () => ManagePresets(ref _imageCurrentPreset, ref _imagePresets, ref _imageActions, ref _imageSourceFolders, ref _imageTrashFolder));
 
         // Settings button
@@ -580,6 +584,8 @@ public partial class MainWindow : Window
         BuildActionButtons(_imageActions, (a) => ExecuteImageAction(a));
 
         AddSidebarSeparator();
+
+        BuildUndoButton();
 
         // Source folders
         BuildFolderButtons("画像フォルダ", _imageSourceFolders,
@@ -654,6 +660,8 @@ public partial class MainWindow : Window
         BuildRatingActionButtons();
 
         AddSidebarSeparator();
+
+        BuildUndoButton();
 
         // Source folder selector for current judgment level
         BuildRatingSourceFolderButtons();
@@ -741,6 +749,7 @@ public partial class MainWindow : Window
                 _ratingCurrentPreset = name;
                 LoadRatingPreset();
                 CloseArchiveForRating();
+                ClearStatusBar();
                 SaveStateOnly();
                 RebuildSidebar();
             }
@@ -838,6 +847,7 @@ public partial class MainWindow : Window
             {
                 _ratingJudgmentLevel = level;
                 CloseArchiveForRating();
+                ClearStatusBar();
                 SaveStateOnly();
                 RebuildSidebar();
             };
@@ -930,7 +940,11 @@ public partial class MainWindow : Window
 
     private async void ExecuteRatingAction(RatingAction action)
     {
-        if (_archivePath == null || _currentRatingData == null) return;
+        if (_archivePath == null || _currentRatingData == null)
+        {
+            SetStatus("ファイルが開かれていません");
+            return;
+        }
 
         var targetFolder = RatingService.GetTargetFolder(_currentRatingData, _ratingJudgmentLevel, action);
         if (targetFolder == null) return;
@@ -953,6 +967,7 @@ public partial class MainWindow : Window
             await MoveFileWithProgress(src, dst, msg);
             File.SetLastWriteTime(dst, DateTime.Now);
 
+            RecordUndo(src, dst, "rating");
             SetStatus($"移動しました: {Path.GetFileName(dst)} → {Path.GetFileName(targetFolder)}");
             AfterFileAction();
         }
@@ -1038,6 +1053,7 @@ public partial class MainWindow : Window
                 _videoRatingCurrentPreset = name;
                 LoadVideoRatingPreset();
                 CloseVideoForRating();
+                ClearStatusBar();
                 SaveStateOnly();
                 RebuildSidebar();
             }
@@ -1090,6 +1106,7 @@ public partial class MainWindow : Window
             {
                 _videoRatingJudgmentLevel = level;
                 CloseVideoForRating();
+                ClearStatusBar();
                 SaveStateOnly();
                 RebuildSidebar();
             };
@@ -1195,7 +1212,11 @@ public partial class MainWindow : Window
 
     private async void ExecuteVideoRatingAction(RatingAction action)
     {
-        if (_videoPath == null || _currentVideoRatingData == null) return;
+        if (_videoPath == null || _currentVideoRatingData == null)
+        {
+            SetStatus("動画が開かれていません");
+            return;
+        }
 
         var targetFolder = RatingService.GetTargetFolder(_currentVideoRatingData, _videoRatingJudgmentLevel, action);
         if (targetFolder == null) return;
@@ -1220,6 +1241,7 @@ public partial class MainWindow : Window
             await MoveFileWithProgress(src, dst, msg);
             File.SetLastWriteTime(dst, DateTime.Now);
 
+            RecordUndo(src, dst, "video");
             SetStatus($"移動しました: {Path.GetFileName(dst)} → {Path.GetFileName(targetFolder)}");
             AfterVideoAction();
         }
@@ -1668,6 +1690,13 @@ public partial class MainWindow : Window
             {
                 var rnd = new Random();
                 LoadArchive(files[rnd.Next(files.Length)]);
+                // ランダムソート時はリスト1個目を開く
+                if (_folderSort == "random" && _folderArchives.Count > 0 && _currentArchiveIndex != 0)
+                    LoadArchive(_folderArchives[0]);
+            }
+            else
+            {
+                SetStatus($"フォルダ内に対象ファイルがありません: {Path.GetFileName(folder)}");
             }
         }
         catch (Exception ex) { SetStatus($"エラー: {ex.Message}"); }
@@ -1761,6 +1790,7 @@ public partial class MainWindow : Window
                     SetStatus($"{Path.GetFileName(path)} — {names.Count}枚");
                     UpdateFileSize(path);
                     UpdateNavigation();
+                    RebuildSidebar();
 
                     // If viewer was open, show first image of new archive
                     if (keepViewer && _viewerOpen && _imageNames.Count > 0)
@@ -1888,6 +1918,14 @@ public partial class MainWindow : Window
                     SetStatus($"{Path.GetFileName(folderPath)} — {names.Count}枚");
                     TxtFileSize.Text = "";
                     UpdateNavigation();
+                    // ランダム時は1枚目を選択
+                    if (_folderSort == "random" && _cards.Count > 0)
+                    {
+                        _selectStart = 0;
+                        _selectEnd = null;
+                        UpdateSelectionVisuals();
+                        _cards[0].BringIntoView();
+                    }
                 });
             }, ct);
         }
@@ -2275,17 +2313,23 @@ public partial class MainWindow : Window
     {
         if (_mode == "image")
         {
+            if (_cards.Count == 0) { SetStatus("画像フォルダが開かれていません"); return; }
             NavigateImageInGrid(delta);
             return;
         }
 
         if (_mode == "video")
         {
+            if (_videoPath == null) { SetStatus("動画が開かれていません"); return; }
             NavigateVideo(delta);
             return;
         }
 
-        if (_folderArchives.Count == 0 || _currentArchiveIndex < 0) return;
+        if (_folderArchives.Count == 0 || _currentArchiveIndex < 0)
+        {
+            SetStatus("ファイルが開かれていません");
+            return;
+        }
         int newIdx = _currentArchiveIndex + delta;
         if (newIdx >= 0 && newIdx < _folderArchives.Count)
         {
@@ -2355,11 +2399,25 @@ public partial class MainWindow : Window
         }
         else if (_mode == "video")
         {
-            if (_videoPath != null) { BuildVideoFileList(forceReshuffle); UpdateVideoNavigation(); }
+            if (_videoPath != null)
+            {
+                BuildVideoFileList(forceReshuffle);
+                if (forceReshuffle && _videoFiles.Count > 0)
+                    PlayVideo(_videoFiles[0]);
+                else
+                    UpdateVideoNavigation();
+            }
         }
         else
         {
-            if (_archivePath != null) { BuildFolderArchives(forceReshuffle); UpdateNavigation(); }
+            if (_archivePath != null)
+            {
+                BuildFolderArchives(forceReshuffle);
+                if (forceReshuffle && _folderArchives.Count > 0)
+                    LoadArchive(_folderArchives[0]);
+                else
+                    UpdateNavigation();
+            }
         }
     }
 
@@ -2406,7 +2464,11 @@ public partial class MainWindow : Window
 
     private async void ExecuteImageAction(ActionItem action)
     {
-        if (_imageFolderPath == null || !_selectStart.HasValue || string.IsNullOrEmpty(action.Folder)) return;
+        if (_imageFolderPath == null || !_selectStart.HasValue || string.IsNullOrEmpty(action.Folder))
+        {
+            if (_imageFolderPath == null || !_selectStart.HasValue) SetStatus("画像が選択されていません");
+            return;
+        }
         int idx = _viewerOpen ? _viewerIndex : _selectStart.Value;
         if (idx < 0 || idx >= _imagePaths.Count) return;
 
@@ -2432,6 +2494,7 @@ public partial class MainWindow : Window
                 await MoveFileWithProgress(src, dst, msg);
             File.SetLastWriteTime(dst, DateTime.Now);
 
+            if (!action.Copy) RecordUndo(src, dst, "image");
             SetStatus($"{verb}しました: {Path.GetFileName(dst)}");
             if (!action.Copy) AfterImageAction(idx);
         }
@@ -2471,6 +2534,7 @@ public partial class MainWindow : Window
             _selectStart = null;
             if (_viewerOpen) CloseViewer();
             UpdateNavigation();
+            RebuildSidebar();
             return;
         }
 
@@ -2486,6 +2550,7 @@ public partial class MainWindow : Window
 
         UpdateNavigation();
         SetStatus($"{Path.GetFileName(_imageFolderPath)} — {_imageNames.Count}枚");
+        RebuildSidebar();
 
         // If viewer is open, show next image
         if (_viewerOpen)
@@ -2501,7 +2566,11 @@ public partial class MainWindow : Window
 
     private async void ExecuteAction(ActionItem action)
     {
-        if (_archivePath == null || string.IsNullOrEmpty(action.Folder)) return;
+        if (_archivePath == null || string.IsNullOrEmpty(action.Folder))
+        {
+            if (_archivePath == null) SetStatus("ファイルが開かれていません");
+            return;
+        }
 
         var src = _archivePath;
         var dst = Path.Combine(action.Folder, Path.GetFileName(src));
@@ -2525,6 +2594,7 @@ public partial class MainWindow : Window
                 await MoveFileWithProgress(src, dst, msg);
             File.SetLastWriteTime(dst, DateTime.Now);
 
+            if (!action.Copy) RecordUndo(src, dst, _mode);
             SetStatus($"{verb}しました: {Path.GetFileName(dst)}");
             if (!action.Copy) AfterFileAction();
         }
@@ -2536,7 +2606,11 @@ public partial class MainWindow : Window
 
     private async void ExecuteVideoAction(ActionItem action)
     {
-        if (_videoPath == null || string.IsNullOrEmpty(action.Folder)) return;
+        if (_videoPath == null || string.IsNullOrEmpty(action.Folder))
+        {
+            if (_videoPath == null) SetStatus("動画が開かれていません");
+            return;
+        }
 
         var src = _videoPath;
         var dst = Path.Combine(action.Folder, Path.GetFileName(src));
@@ -2562,6 +2636,7 @@ public partial class MainWindow : Window
                 await MoveFileWithProgress(src, dst, msg);
             File.SetLastWriteTime(dst, DateTime.Now);
 
+            if (!action.Copy) RecordUndo(src, dst, "video");
             SetStatus($"{verb}しました: {Path.GetFileName(dst)}");
             if (!action.Copy) AfterVideoAction();
         }
@@ -2688,6 +2763,8 @@ public partial class MainWindow : Window
             _cards.Clear();
             EmptyMessage.Visibility = Visibility.Visible;
             UpdateNavigation();
+            ClearStatusBar();
+            RebuildSidebar();
             return;
         }
 
@@ -2713,6 +2790,8 @@ public partial class MainWindow : Window
             _lastVideoDirCache = null;
             VideoOverlay.Visibility = Visibility.Collapsed;
             EmptyMessage.Visibility = Visibility.Visible;
+            ClearStatusBar();
+            RebuildSidebar();
             return;
         }
 
@@ -2960,32 +3039,48 @@ public partial class MainWindow : Window
             {
                 var rnd = new Random();
                 PlayVideo(files[rnd.Next(files.Length)]);
+                // ランダムソート時はリスト1個目を再生
+                if (_folderSort == "random" && _videoFiles.Count > 0 && _currentVideoIndex != 0)
+                    PlayVideo(_videoFiles[0]);
+            }
+            else
+            {
+                SetStatus($"フォルダ内に対象ファイルがありません: {Path.GetFileName(folder)}");
             }
         }
         catch (Exception ex) { SetStatus($"エラー: {ex.Message}"); }
     }
 
-    private void PlayVideo(string path)
+    private async void PlayVideo(string path)
     {
         StopVideo();
         _videoPath = path;
         EmptyMessage.Visibility = Visibility.Collapsed;
         VideoOverlay.Visibility = Visibility.Visible;
         GridScroller.Visibility = Visibility.Collapsed;
+        VideoFileName.Text = Path.GetFileName(path);
 
         BuildVideoFileList();
         UpdateVideoNavigation();
         RebuildSidebar();
 
+        // Show loading overlay
+        ProgressOverlay.Visibility = Visibility.Visible;
+        ProgressText.Text = "動画を開いています...";
+        LoadProgress.IsIndeterminate = true;
+
         try
         {
-            if (_libVlc == null)
+            await Task.Run(() =>
             {
-                Core.Initialize();
-                _libVlc = new LibVLC("--no-xlib", "--quiet", "--no-video-title-show");
-            }
+                if (_libVlc == null)
+                {
+                    Core.Initialize();
+                    _libVlc = new LibVLC("--no-xlib", "--quiet", "--no-video-title-show");
+                }
+            });
 
-            _vlcPlayer = new LibVLCSharp.Shared.MediaPlayer(_libVlc);
+            _vlcPlayer = new LibVLCSharp.Shared.MediaPlayer(_libVlc!);
             _vlcPlayer.Volume = _videoVolume;
             VolumeSlider.Value = _videoVolume;
             VolumeText.Text = $"{_videoVolume}%";
@@ -2995,7 +3090,8 @@ public partial class MainWindow : Window
             _videoView!.MediaPlayer = _vlcPlayer;
 
             // Use file path directly (not Uri) to avoid encoding issues with Japanese characters
-            using var media = new Media(_libVlc, path, FromType.FromPath);
+            using var media = new Media(_libVlc!, path, FromType.FromPath);
+            await Task.Run(() => media.Parse(MediaParseOptions.ParseLocal));
             _vlcPlayer.Play(media);
 
             _videoTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -3008,6 +3104,11 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ShowError($"動画再生に失敗しました:\n{ex.Message}");
+        }
+        finally
+        {
+            LoadProgress.IsIndeterminate = false;
+            ProgressOverlay.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -3279,7 +3380,38 @@ public partial class MainWindow : Window
 
     private void VideoSurface_Click(object sender, MouseButtonEventArgs e)
     {
+        if (e.ClickCount == 2)
+        {
+            ToggleVideoTheaterMode();
+            e.Handled = true;
+            return;
+        }
         BtnPlayPause_Click(sender, e);
+    }
+
+    private void ToggleVideoTheaterMode()
+    {
+        _videoTheaterMode = !_videoTheaterMode;
+        // Root Grid > Row 0 = Header, Row 2 = StatusBar
+        var rootGrid = (Grid)Content;
+        var headerRow = rootGrid.RowDefinitions[0];
+        var statusRow = rootGrid.RowDefinitions[2];
+        // Main content grid > Column 0 = Left sidebar
+        var contentGrid = (Grid)rootGrid.Children[1]; // Grid.Row="1"
+        var sidebarCol = contentGrid.ColumnDefinitions[0];
+
+        if (_videoTheaterMode)
+        {
+            headerRow.Height = new GridLength(0);
+            statusRow.Height = new GridLength(0);
+            sidebarCol.Width = new GridLength(0);
+        }
+        else
+        {
+            headerRow.Height = new GridLength(56);
+            statusRow.Height = new GridLength(30);
+            sidebarCol.Width = new GridLength(300);
+        }
     }
 
     private void VideoSurface_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -3321,6 +3453,36 @@ public partial class MainWindow : Window
         _videoVolume = (int)e.NewValue;
         if (VolumeText != null) VolumeText.Text = $"{_videoVolume}%";
         if (_vlcPlayer != null) _vlcPlayer.Volume = _videoVolume;
+        // スライダー手動操作でミュート解除
+        if (_isMuted && _videoVolume > 0)
+        {
+            _isMuted = false;
+            if (BtnMute != null) BtnMute.Content = "🔊";
+        }
+    }
+
+    private void BtnMute_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isMuted)
+        {
+            _isMuted = false;
+            VolumeSlider.Value = _volumeBeforeMute;
+            BtnMute.Content = "🔊";
+        }
+        else
+        {
+            _isMuted = true;
+            _volumeBeforeMute = _videoVolume;
+            VolumeSlider.Value = 0;
+            BtnMute.Content = "🔇";
+        }
+    }
+
+    private void VolumeSlider_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var delta = e.Delta > 0 ? 5 : -5;
+        VolumeSlider.Value = Math.Clamp(VolumeSlider.Value + delta, 0, 100);
+        e.Handled = true;
     }
 
     private void VideoEndAction_Click(object sender, RoutedEventArgs e)
@@ -3338,11 +3500,13 @@ public partial class MainWindow : Window
 
     private void BtnCloseVideo_Click(object sender, RoutedEventArgs e)
     {
+        if (_videoTheaterMode) ToggleVideoTheaterMode();
         StopVideo();
         _videoPath = null;
         VideoOverlay.Visibility = Visibility.Collapsed;
         EmptyMessage.Visibility = Visibility.Visible;
         RebuildSidebar();
+        ClearStatusBar();
     }
 
     // ======== KEYBOARD ========
@@ -3379,7 +3543,9 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
             case Key.Escape:
-                if (_viewerOpen)
+                if (_videoTheaterMode)
+                    ToggleVideoTheaterMode();
+                else if (_viewerOpen)
                     CloseViewer();
                 else
                     BtnClearSelection_Click(sender, e);
@@ -3468,6 +3634,66 @@ public partial class MainWindow : Window
         {
             if (_mode == "video") SwitchMode("browse");
             LoadArchive(file);
+        }
+    }
+
+    // ======== UNDO ========
+
+    private void RecordUndo(string src, string dst, string mode)
+    {
+        _undoSrc = dst;  // 現在ファイルがある場所
+        _undoDst = src;  // 元あった場所
+        _undoMode = mode;
+    }
+
+    private void BuildUndoButton()
+    {
+        if (_undoSrc == null) return;
+        AddSidebarSeparator();
+        var undoBtn = CreateSidebarButton($"↩ 戻す: {Path.GetFileName(_undoDst)}", () => ExecuteUndo());
+        undoBtn.ToolTip = $"{_undoSrc} → {_undoDst}";
+        LeftSidebar.Children.Add(undoBtn);
+    }
+
+    private void ClearUndo()
+    {
+        _undoSrc = null;
+        _undoDst = null;
+        _undoMode = null;
+    }
+
+    private async void ExecuteUndo()
+    {
+        if (_undoSrc == null || _undoDst == null) { SetStatus("戻せる操作がありません"); return; }
+        if (!File.Exists(_undoSrc)) { SetStatus($"ファイルが見つかりません: {Path.GetFileName(_undoSrc)}"); ClearUndo(); return; }
+
+        var src = _undoSrc;
+        var dst = _undoDst;
+        var mode = _undoMode;
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+
+            if (File.Exists(dst))
+            {
+                var resolution = ResolveConflict(src, dst);
+                if (resolution == "skip") return;
+                if (resolution == "rename") dst = MakeUniquePath(dst);
+            }
+
+            // 現在再生中の動画なら停止
+            if (mode == "video" && _videoPath == src) StopVideo();
+
+            await MoveFileWithProgress(src, dst, $"戻し中: {Path.GetFileName(src)}...");
+
+            SetStatus($"戻しました: {Path.GetFileName(dst)}");
+            ClearUndo();
+            RebuildSidebar();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"元に戻す操作に失敗しました:\n{ex.Message}");
         }
     }
 
