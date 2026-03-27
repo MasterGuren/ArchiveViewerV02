@@ -80,4 +80,7 @@ public class AppState
 
     [JsonPropertyName("theme")]
     public string Theme { get; set; } = "";
+
+    [JsonPropertyName("image_scale_mode")]
+    public string ImageScaleMode { get; set; } = "Default";
 }

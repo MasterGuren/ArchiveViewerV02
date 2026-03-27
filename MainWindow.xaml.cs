@@ -98,6 +98,9 @@ public partial class MainWindow : Window
     private RatingPresetData? _currentVideoRatingData;
     private int _videoRatingJudgmentLevel = 0;
 
+    // Viewer
+    private string _imageScaleMode = "Default";
+
     // Undo
     private string? _undoSrc; // 移動先（現在のパス）
     private string? _undoDst; // 移動元（戻す先）
@@ -142,6 +145,7 @@ public partial class MainWindow : Window
         _videoEndAction = _config.State.VideoEndAction;
         _thumbSize = _config.State.ThumbSize > 0 ? _config.State.ThumbSize : Theme.ThumbSizeDefault;
         _videoScrollAmount = !string.IsNullOrEmpty(_config.State.VideoScrollAmount) ? _config.State.VideoScrollAmount : "30";
+        _imageScaleMode = !string.IsNullOrEmpty(_config.State.ImageScaleMode) ? _config.State.ImageScaleMode : "Default";
 
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
         _imagePresets = _config.ImagePresets;
@@ -193,6 +197,7 @@ public partial class MainWindow : Window
         _config.State.VideoEndAction = _videoEndAction;
         _config.State.ThumbSize = _thumbSize;
         _config.State.VideoScrollAmount = _videoScrollAmount;
+        _config.State.ImageScaleMode = _imageScaleMode;
         _config.State.LastMode = _mode;
         _config.State.ExtractPresetOrder = [.. _extractPresets.Keys];
         _config.State.ImageCurrentPreset = _imageCurrentPreset;
@@ -2157,9 +2162,22 @@ public partial class MainWindow : Window
         HeaderRow.Height = new GridLength(0);
         ViewerBottomBar.Opacity = 0;
         ViewerOverlay.Visibility = Visibility.Visible;
+        ApplyImageScaleMode();
+        RestoreImageScaleRadio();
         LoadViewerImage(index);
         ViewerSlider.Maximum = _imageNames.Count - 1;
         ViewerSlider.Value = index;
+    }
+
+    private void RestoreImageScaleRadio()
+    {
+        switch (_imageScaleMode)
+        {
+            case "Fant": RbScaleSmooth.IsChecked = true; break;
+            case "HighQuality": RbScaleHQ.IsChecked = true; break;
+            case "NearestNeighbor": RbScaleNN.IsChecked = true; break;
+            default: RbScaleDefault.IsChecked = true; break;
+        }
     }
 
     private void LoadViewerImage(int index)
@@ -2211,6 +2229,28 @@ public partial class MainWindow : Window
         }
 
         ViewerInfo.Text = $"{containerName} — {fileName} ({index + 1}/{_imageNames.Count})";
+    }
+
+    private void ImageScaleMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string tag)
+        {
+            _imageScaleMode = tag;
+            ApplyImageScaleMode();
+            SaveStateOnly();
+        }
+    }
+
+    private void ApplyImageScaleMode()
+    {
+        var mode = _imageScaleMode switch
+        {
+            "Fant" => BitmapScalingMode.Fant,
+            "HighQuality" => BitmapScalingMode.HighQuality,
+            "NearestNeighbor" => BitmapScalingMode.NearestNeighbor,
+            _ => BitmapScalingMode.Unspecified
+        };
+        RenderOptions.SetBitmapScalingMode(ViewerImage, mode);
     }
 
     private void CloseViewer()
@@ -3684,7 +3724,14 @@ public partial class MainWindow : Window
         }
         else if (_viewerOpen)
         {
-            ViewerNavigate(e.Delta > 0 ? -1 : 1);
+            if (SidebarScroller.IsMouseOver)
+            {
+                SidebarScroller.ScrollToVerticalOffset(SidebarScroller.VerticalOffset - e.Delta);
+            }
+            else
+            {
+                ViewerNavigate(e.Delta > 0 ? -1 : 1);
+            }
             e.Handled = true;
         }
         else if (!e.Handled && GridScroller.IsMouseOver)

@@ -215,7 +215,7 @@
                       MouseLeftButtonDown="ViewerOverlay_MouseLeftButtonDown"
                       MouseMove="ViewerOverlay_MouseMove">
                     <Image x:Name="ViewerImage" Stretch="Uniform" Margin="8"/>
-                    <Border x:Name="ViewerBottomBar" VerticalAlignment="Bottom" Height="80"
+                    <Border x:Name="ViewerBottomBar" VerticalAlignment="Bottom" Height="96"
                             Background="{DynamicResource ThemePanelOverlay}" Opacity="0" IsHitTestVisible="True"
                             MouseEnter="ViewerBottomBar_MouseEnter" MouseLeave="ViewerBottomBar_MouseLeave">
                         <StackPanel VerticalAlignment="Center" Margin="16,0">
@@ -223,6 +223,26 @@
                                     ValueChanged="ViewerSlider_ValueChanged" Margin="0,0,0,4"/>
                             <TextBlock x:Name="ViewerInfo" Foreground="{DynamicResource ThemeSubtext}"
                                        FontFamily="Yu Gothic UI" FontSize="13" HorizontalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                <TextBlock Text="フィルタ:" Foreground="{DynamicResource ThemeSubtext}"
+                                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <RadioButton x:Name="RbScaleDefault" Content="デフォルト" GroupName="ImageScale"
+                                             IsChecked="True" Click="ImageScaleMode_Click" Tag="Default"
+                                             Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"
+                                             VerticalAlignment="Center" Margin="2,0"/>
+                                <RadioButton x:Name="RbScaleSmooth" Content="スムース" GroupName="ImageScale"
+                                             Click="ImageScaleMode_Click" Tag="Fant"
+                                             Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"
+                                             VerticalAlignment="Center" Margin="2,0"/>
+                                <RadioButton x:Name="RbScaleHQ" Content="高品質" GroupName="ImageScale"
+                                             Click="ImageScaleMode_Click" Tag="HighQuality"
+                                             Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"
+                                             VerticalAlignment="Center" Margin="2,0"/>
+                                <RadioButton x:Name="RbScaleNN" Content="ニアレスト" GroupName="ImageScale"
+                                             Click="ImageScaleMode_Click" Tag="NearestNeighbor"
+                                             Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"
+                                             VerticalAlignment="Center" Margin="2,0"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </Grid>
