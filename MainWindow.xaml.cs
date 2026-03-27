@@ -64,6 +64,7 @@ public partial class MainWindow : Window
     private int _videoVolume = 80;
     private int _volumeBeforeMute = 80;
     private bool _isMuted;
+    private string _videoScrollAmount = "30"; // "10","30","60","300","percent"
     private string _videoEndAction = "stop"; // "stop", "loop", "next"
     private bool _videoEndHandled;
     private LibVLCSharp.WPF.VideoView? _videoView; // created/destroyed dynamically
@@ -126,6 +127,7 @@ public partial class MainWindow : Window
         UpdateSortButtons();
         UpdateOrientButtons();
         UpdateVideoEndActionButtons();
+        UpdateVideoScrollButtons();
 
     }
 
@@ -138,6 +140,8 @@ public partial class MainWindow : Window
         _cardOrient = _config.State.CardOrient;
         _videoVolume = _config.State.VideoVolume;
         _videoEndAction = _config.State.VideoEndAction;
+        _thumbSize = _config.State.ThumbSize > 0 ? _config.State.ThumbSize : Theme.ThumbSizeDefault;
+        _videoScrollAmount = !string.IsNullOrEmpty(_config.State.VideoScrollAmount) ? _config.State.VideoScrollAmount : "30";
 
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
         _imagePresets = _config.ImagePresets;
@@ -187,6 +191,8 @@ public partial class MainWindow : Window
         _config.State.CardOrient = _cardOrient;
         _config.State.VideoVolume = _videoVolume;
         _config.State.VideoEndAction = _videoEndAction;
+        _config.State.ThumbSize = _thumbSize;
+        _config.State.VideoScrollAmount = _videoScrollAmount;
         _config.State.LastMode = _mode;
         _config.State.ExtractPresetOrder = [.. _extractPresets.Keys];
         _config.State.ImageCurrentPreset = _imageCurrentPreset;
@@ -761,41 +767,50 @@ public partial class MainWindow : Window
             ? _ratingPresets.Keys.ToList()
             : _ratingPresets.Where(p => p.Value.Category == tabFilter).Select(p => p.Key).ToList();
 
-        var listBox = new System.Windows.Controls.ListBox
+        var ratingPresetPanel = new StackPanel();
+        var ratingPresetScroller = new ScrollViewer
         {
-            Background = Theme.PanelBrush,
-            Foreground = Theme.TextBrush,
-            BorderBrush = Theme.BorderBrush,
-            FontFamily = new FontFamily("Yu Gothic UI"),
-            FontSize = 14,
             MaxHeight = 120,
-            Margin = new Thickness(0, 0, 0, 4)
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Margin = new Thickness(0, 0, 0, 4),
+            Content = ratingPresetPanel
         };
-
         foreach (var name in filteredPresets)
         {
-            listBox.Items.Add(new ListBoxItem { Content = name, Tag = name });
-            if (name == _ratingCurrentPreset)
-                listBox.SelectedIndex = listBox.Items.Count - 1;
-        }
-
-        listBox.SelectionChanged += (_, _) =>
-        {
-            if (listBox.SelectedItem is ListBoxItem item && item.Tag is string name && name != _ratingCurrentPreset)
+            var n = name;
+            var isSelected = n == _ratingCurrentPreset;
+            var btn = new Button
             {
-                _ratingCurrentPreset = name;
-                LoadRatingPreset();
-                CloseArchiveForRating();
-                ClearStatusBar();
-                SaveStateOnly();
-                RebuildSidebar();
-            }
-        };
-
-        if (listBox.SelectedIndex >= 0)
-            listBox.Loaded += (_, _) => listBox.ScrollIntoView(listBox.SelectedItem);
-
-        LeftSidebar.Children.Add(listBox);
+                Content = n,
+                Background = isSelected ? new SolidColorBrush(Theme.AccentBrush.Color) : Theme.PanelBrush,
+                Foreground = isSelected ? ContrastForeground(Theme.AccentBrush) : Theme.TextBrush,
+                FontFamily = new FontFamily("Yu Gothic UI"),
+                FontSize = 14,
+                FontWeight = isSelected ? FontWeights.Bold : FontWeights.Normal,
+                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+                Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(0),
+                Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(0),
+            };
+            btn.Click += (_, _) =>
+            {
+                if (n != _ratingCurrentPreset)
+                {
+                    _ratingCurrentPreset = n;
+                    LoadRatingPreset();
+                    CloseArchiveForRating();
+                    ClearStatusBar();
+                    SaveStateOnly();
+                    RebuildSidebar();
+                }
+            };
+            if (isSelected)
+                btn.Loaded += (s, _) => ((Button)s).BringIntoView();
+            ratingPresetPanel.Children.Add(btn);
+        }
+        LeftSidebar.Children.Add(ratingPresetScroller);
 
         var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", () => ManageRatingPresets());
         manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
@@ -1065,41 +1080,50 @@ public partial class MainWindow : Window
             ? _videoRatingPresets.Keys.ToList()
             : _videoRatingPresets.Where(p => p.Value.Category == tabFilter).Select(p => p.Key).ToList();
 
-        var listBox = new System.Windows.Controls.ListBox
+        var videoPresetPanel = new StackPanel();
+        var videoPresetScroller = new ScrollViewer
         {
-            Background = Theme.PanelBrush,
-            Foreground = Theme.TextBrush,
-            BorderBrush = Theme.BorderBrush,
-            FontFamily = new FontFamily("Yu Gothic UI"),
-            FontSize = 14,
             MaxHeight = 120,
-            Margin = new Thickness(0, 0, 0, 4)
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Margin = new Thickness(0, 0, 0, 4),
+            Content = videoPresetPanel
         };
-
         foreach (var name in filteredPresets)
         {
-            listBox.Items.Add(new ListBoxItem { Content = name, Tag = name });
-            if (name == _videoRatingCurrentPreset)
-                listBox.SelectedIndex = listBox.Items.Count - 1;
-        }
-
-        listBox.SelectionChanged += (_, _) =>
-        {
-            if (listBox.SelectedItem is ListBoxItem item && item.Tag is string name && name != _videoRatingCurrentPreset)
+            var n = name;
+            var isSelected = n == _videoRatingCurrentPreset;
+            var btn = new Button
             {
-                _videoRatingCurrentPreset = name;
-                LoadVideoRatingPreset();
-                CloseVideoForRating();
-                ClearStatusBar();
-                SaveStateOnly();
-                RebuildSidebar();
-            }
-        };
-
-        if (listBox.SelectedIndex >= 0)
-            listBox.Loaded += (_, _) => listBox.ScrollIntoView(listBox.SelectedItem);
-
-        LeftSidebar.Children.Add(listBox);
+                Content = n,
+                Background = isSelected ? new SolidColorBrush(Theme.AccentBrush.Color) : Theme.PanelBrush,
+                Foreground = isSelected ? ContrastForeground(Theme.AccentBrush) : Theme.TextBrush,
+                FontFamily = new FontFamily("Yu Gothic UI"),
+                FontSize = 14,
+                FontWeight = isSelected ? FontWeights.Bold : FontWeights.Normal,
+                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+                Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(0),
+                Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(0),
+            };
+            btn.Click += (_, _) =>
+            {
+                if (n != _videoRatingCurrentPreset)
+                {
+                    _videoRatingCurrentPreset = n;
+                    LoadVideoRatingPreset();
+                    CloseVideoForRating();
+                    ClearStatusBar();
+                    SaveStateOnly();
+                    RebuildSidebar();
+                }
+            };
+            if (isSelected)
+                btn.Loaded += (s, _) => ((Button)s).BringIntoView();
+            videoPresetPanel.Children.Add(btn);
+        }
+        LeftSidebar.Children.Add(videoPresetScroller);
 
         var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", () => ManageVideoRatingPresets());
         manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
@@ -1465,34 +1489,43 @@ public partial class MainWindow : Window
             ? presets.Keys.ToList()
             : presets.Where(p => p.Value.Category == tabFilter).Select(p => p.Key).ToList();
 
-        var listBox = new System.Windows.Controls.ListBox
+        var presetPanel = new StackPanel();
+        var presetScroller = new ScrollViewer
         {
-            Background = Theme.PanelBrush,
-            Foreground = Theme.TextBrush,
-            BorderBrush = Theme.BorderBrush,
-            FontFamily = new System.Windows.Media.FontFamily("Yu Gothic UI"),
-            FontSize = 14,
             MaxHeight = 120,
-            Margin = new Thickness(0, 0, 0, 4)
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Margin = new Thickness(0, 0, 0, 4),
+            Content = presetPanel
         };
 
         foreach (var name in filteredPresets)
         {
-            listBox.Items.Add(new ListBoxItem { Content = name, Tag = name });
-            if (name == presetName)
-                listBox.SelectedIndex = listBox.Items.Count - 1;
+            var n = name;
+            var isSelected = n == presetName;
+            var bg = isSelected ? new SolidColorBrush(Theme.AccentBrush.Color) : Theme.PanelBrush;
+            var fg = isSelected ? ContrastForeground(Theme.AccentBrush) : Theme.TextBrush;
+            var btn = new Button
+            {
+                Content = n,
+                Background = bg,
+                Foreground = fg,
+                FontFamily = new FontFamily("Yu Gothic UI"),
+                FontSize = 14,
+                FontWeight = isSelected ? FontWeights.Bold : FontWeights.Normal,
+                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+                Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(0),
+                Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(0),
+            };
+            btn.Click += (_, _) => { if (n != presetName) onLoad(n); };
+            if (isSelected)
+                btn.Loaded += (s, _) => ((Button)s).BringIntoView();
+            presetPanel.Children.Add(btn);
         }
 
-        listBox.SelectionChanged += (_, _) =>
-        {
-            if (listBox.SelectedItem is ListBoxItem item && item.Tag is string name && name != presetName)
-                onLoad(name);
-        };
-
-        if (listBox.SelectedIndex >= 0)
-            listBox.Loaded += (_, _) => listBox.ScrollIntoView(listBox.SelectedItem);
-
-        LeftSidebar.Children.Add(listBox);
+        LeftSidebar.Children.Add(presetScroller);
 
         var manageBtn = CreateSidebarButton("カテゴリ・リスト管理", onManage);
         manageBtn.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
@@ -2122,6 +2155,7 @@ public partial class MainWindow : Window
         _viewerOpen = true;
         HeaderBar.Visibility = Visibility.Collapsed;
         HeaderRow.Height = new GridLength(0);
+        ViewerBottomBar.Opacity = 0;
         ViewerOverlay.Visibility = Visibility.Visible;
         LoadViewerImage(index);
         ViewerSlider.Maximum = _imageNames.Count - 1;
@@ -2239,7 +2273,9 @@ public partial class MainWindow : Window
 
     private void ViewerBottomBar_MouseLeave(object sender, MouseEventArgs e)
     {
-        StartViewerBarHideTimer();
+        // バーから離れたら即座に非表示
+        _viewerBarHideTimer?.Stop();
+        ViewerBottomBar.Opacity = 0;
     }
 
     private bool _sliderUpdating;
@@ -3457,12 +3493,23 @@ public partial class MainWindow : Window
         var length = _vlcPlayer.Length;
         if (length > 0)
         {
-            long skip = length / 100; // 1% per tick
-            // Up-roll = rewind, Down-roll = forward
+            long skip = _videoScrollAmount switch
+            {
+                "percent1" => length / 100,
+                "percent5" => length / 20,
+                "percent10" => length / 10,
+                _ => long.Parse(_videoScrollAmount) * 1000
+            };
             long newTime = Math.Clamp(_vlcPlayer.Time + (e.Delta > 0 ? -skip : skip), 0, length);
             _vlcPlayer.Time = newTime;
         }
         e.Handled = true;
+    }
+
+    private void VideoScrollAmount_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string tag)
+            _videoScrollAmount = tag;
     }
 
     private void VideoSkip_Click(object sender, RoutedEventArgs e)
@@ -3533,6 +3580,17 @@ public partial class MainWindow : Window
         RbEndStop.IsChecked = _videoEndAction == "stop";
         RbEndLoop.IsChecked = _videoEndAction == "loop";
         RbEndNext.IsChecked = _videoEndAction == "next";
+    }
+
+    private void UpdateVideoScrollButtons()
+    {
+        RbScroll10s.IsChecked = _videoScrollAmount == "10";
+        RbScroll30s.IsChecked = _videoScrollAmount == "30";
+        RbScroll1m.IsChecked = _videoScrollAmount == "60";
+        RbScroll5m.IsChecked = _videoScrollAmount == "300";
+        RbScroll1p.IsChecked = _videoScrollAmount == "percent1";
+        RbScroll5p.IsChecked = _videoScrollAmount == "percent5";
+        RbScroll10p.IsChecked = _videoScrollAmount == "percent10";
     }
 
     private void BtnCloseVideo_Click(object sender, RoutedEventArgs e)
@@ -3627,6 +3685,12 @@ public partial class MainWindow : Window
         else if (_viewerOpen)
         {
             ViewerNavigate(e.Delta > 0 ? -1 : 1);
+            e.Handled = true;
+        }
+        else if (!e.Handled && GridScroller.IsMouseOver)
+        {
+            // 一覧表示のスクロール量を増やす
+            GridScroller.ScrollToVerticalOffset(GridScroller.VerticalOffset - e.Delta * 2);
             e.Handled = true;
         }
     }

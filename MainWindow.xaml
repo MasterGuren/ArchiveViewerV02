@@ -284,6 +284,30 @@
                                                  Click="VideoEndAction_Click" Tag="next" VerticalAlignment="Center" Margin="2,0"
                                                  Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
 
+                                    <TextBlock Text="スクロール:" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"
+                                               VerticalAlignment="Center" Margin="10,0,2,0"/>
+                                    <RadioButton x:Name="RbScroll10s" Content="10s" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="10" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                                    <RadioButton x:Name="RbScroll30s" Content="30s" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="30" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                                    <RadioButton x:Name="RbScroll1m" Content="1m" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="60" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                                    <RadioButton x:Name="RbScroll5m" Content="5m" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="300" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                                    <RadioButton x:Name="RbScroll1p" Content="1%" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="percent1" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                                    <RadioButton x:Name="RbScroll5p" Content="5%" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="percent5" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                                    <RadioButton x:Name="RbScroll10p" Content="10%" GroupName="VideoScroll"
+                                                 Click="VideoScrollAmount_Click" Tag="percent10" VerticalAlignment="Center" Margin="2,0"
+                                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"/>
+
                                     <TextBox x:Name="VideoFileName" IsReadOnly="True" Background="Transparent"
                                              Foreground="{DynamicResource ThemeSubtext}" BorderThickness="0"
                                              FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"

@@ -17,12 +17,12 @@ public static class RatingService
 {
     public static readonly List<(string Label, string Color, RatingAction Action)> Buttons =
     [
-        ("★撃墜",   "#f59e0b", RatingAction.Shootdown),
-        ("▲▲2昇格", "#86efac", RatingAction.Promote2),
-        ("▲昇格",   "#22c55e", RatingAction.Promote1),
-        ("▶ステイ",  "#3b82f6", RatingAction.Stay),
-        ("▶▲カテゴリー移動", "#14b8a6", RatingAction.CategoryMove),
-        ("▼降格",   "#ef4444", RatingAction.Demote1),
+        ("★撃墜",   "#ffffff", RatingAction.Shootdown),
+        ("▲▲2昇格", "#ef4444", RatingAction.Promote2),
+        ("▲昇格",   "#e6f020", RatingAction.Promote1),
+        ("▶ステイ",  "#22c55e", RatingAction.Stay),
+        ("▶▲カテゴリー移動", "#8b5cf6", RatingAction.CategoryMove),
+        ("▼降格",   "#3b82f6", RatingAction.Demote1),
         ("✖削除",   "#7f1d1d", RatingAction.Delete),
     ];
 

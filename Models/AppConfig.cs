@@ -72,6 +72,12 @@ public class AppState
     [JsonPropertyName("last_mode")]
     public string LastMode { get; set; } = "browse";
 
+    [JsonPropertyName("video_scroll_amount")]
+    public string VideoScrollAmount { get; set; } = "30";
+
+    [JsonPropertyName("thumb_size")]
+    public int ThumbSize { get; set; } = 480;
+
     [JsonPropertyName("theme")]
     public string Theme { get; set; } = "";
 }
