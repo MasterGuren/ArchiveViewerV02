@@ -7,7 +7,7 @@ namespace ArchiveViewer.Services;
 
 public static class ThumbnailService
 {
-    private const int MaxThumbPixels = 480;
+    private const int MaxThumbPixels = 960;
     private const int JpegQuality = 85;
 
     // Background color for compositing transparent images (matches theme #1e1e2e)

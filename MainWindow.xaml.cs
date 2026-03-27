@@ -376,6 +376,13 @@ public partial class MainWindow : Window
                 break;
         }
 
+        // Thumbnail size selector (image-related modes only)
+        if (_mode != "video")
+        {
+            AddSidebarSeparator();
+            BuildThumbSizeSelector();
+        }
+
         // Theme selector (common to all modes)
         AddSidebarSeparator();
         BuildThemeSelector();
@@ -383,6 +390,36 @@ public partial class MainWindow : Window
         // Restore scroll position after layout completes
         Dispatcher.InvokeAsync(() => SidebarScroller.ScrollToVerticalOffset(scrollPos),
             System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void BuildThumbSizeSelector()
+    {
+        AddSidebarLabel("サムネサイズ");
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var sizes = new (string Label, int Size)[] { ("小", 240), ("中", 480), ("大", 720), ("特大", 960) };
+        foreach (var (label, size) in sizes)
+        {
+            var rb = new System.Windows.Controls.RadioButton
+            {
+                Content = label,
+                IsChecked = _thumbSize == size,
+                GroupName = "ThumbSize",
+                Foreground = Theme.TextBrush,
+                FontFamily = new FontFamily("Yu Gothic UI"),
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            var s = size;
+            rb.Click += (_, _) =>
+            {
+                if (_thumbSize == s) return;
+                _thumbSize = s;
+                if (_thumbData != null) { BuildThumbnails(); RebuildGrid(); }
+            };
+            panel.Children.Add(rb);
+        }
+        LeftSidebar.Children.Add(panel);
     }
 
     private void BuildThemeSelector()

@@ -91,7 +91,7 @@ public static class Theme
     // Thumbnail sizes
     public const int ThumbSizeDefault = 480;
     public const int ThumbSizeMin = 80;
-    public const int ThumbSizeMax = 480;
+    public const int ThumbSizeMax = 960;
     public const int ThumbSizeStep = 40;
 
     // Supported extensions
