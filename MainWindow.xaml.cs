@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     // Navigation
     private List<string> _folderArchives = [];
     private int _currentArchiveIndex = -1;
+    private string? _folderRoot; // ソースフォルダのルート（サブフォルダ再帰の起点）
 
     // Viewer
     private int _viewerIndex;
@@ -1737,6 +1738,7 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() == true)
         {
+            _folderRoot = null;
             LoadArchive(dlg.FileName);
         }
     }
@@ -1750,15 +1752,17 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() == true)
         {
+            _folderRoot = folder;
             LoadArchive(dlg.FileName);
         }
     }
 
     private void OpenRandomFromFolder(string folder)
     {
+        _folderRoot = folder;
         try
         {
-            var files = Directory.GetFiles(folder)
+            var files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories)
                 .Where(f => Theme.ArchiveExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToArray();
             if (files.Length > 0)
@@ -1839,7 +1843,7 @@ public partial class MainWindow : Window
                 Parallel.For(0, names.Count, parallelOpts, i =>
                 {
                     if (rawImages[i] != null)
-                        data[i] = ThumbnailService.GenerateThumbnailBytes(rawImages[i]!);
+                        data[i] = ThumbnailService.GenerateThumbnailBytes(rawImages[i]!, names[i]);
 
                     rawImages[i] = null; // Release original data immediately
 
@@ -1918,7 +1922,7 @@ public partial class MainWindow : Window
             await Task.Run(() =>
             {
                 // Step 1: Enumerate and sort image files
-                var files = Directory.GetFiles(folderPath)
+                var files = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories)
                     .Where(f => Theme.ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                     .ToList();
 
@@ -1967,7 +1971,7 @@ public partial class MainWindow : Window
                     try
                     {
                         var raw = File.ReadAllBytes(files[i]);
-                        data[i] = ThumbnailService.GenerateThumbnailBytes(raw);
+                        data[i] = ThumbnailService.GenerateThumbnailBytes(raw, files[i]);
                     }
                     catch { data[i] = null; }
 
@@ -2160,6 +2164,8 @@ public partial class MainWindow : Window
         _viewerOpen = true;
         HeaderBar.Visibility = Visibility.Collapsed;
         HeaderRow.Height = new GridLength(0);
+        LeftSidebar.Margin = new Thickness(12, 12 + 56, 12, 12);
+        RightSidebar.Padding = new Thickness(0, 56, 0, 0);
         ViewerBottomBar.Opacity = 0;
         ViewerOverlay.Visibility = Visibility.Visible;
         ApplyImageScaleMode();
@@ -2260,6 +2266,8 @@ public partial class MainWindow : Window
         ViewerOverlay.Visibility = Visibility.Collapsed;
         HeaderBar.Visibility = Visibility.Visible;
         HeaderRow.Height = new GridLength(56);
+        LeftSidebar.Margin = new Thickness(12);
+        RightSidebar.Padding = new Thickness(0);
     }
 
     private void ViewerOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2351,7 +2359,7 @@ public partial class MainWindow : Window
     private void BuildFolderArchives(bool forceReshuffle = false)
     {
         if (_archivePath == null) return;
-        var dir = Path.GetDirectoryName(_archivePath);
+        var dir = _folderRoot ?? Path.GetDirectoryName(_archivePath);
         if (dir == null) return;
 
         // Skip rebuild if same folder, same sort mode, and not forced (preserves random order)
@@ -2364,7 +2372,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var files = Directory.GetFiles(dir)
+            var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories)
                 .Where(f => Theme.ArchiveExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToList();
 
@@ -3145,7 +3153,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var files = Directory.GetFiles(folder)
+            var files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories)
                 .Where(f => Theme.VideoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToArray();
             if (files.Length > 0)
@@ -3297,7 +3305,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var files = Directory.GetFiles(dir)
+            var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories)
                 .Where(f => Theme.VideoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToList();
 
@@ -3781,6 +3789,7 @@ public partial class MainWindow : Window
         else if (Theme.ArchiveExtensions.Contains(ext))
         {
             if (_mode == "video") SwitchMode("browse");
+            _folderRoot = null;
             LoadArchive(file);
         }
     }

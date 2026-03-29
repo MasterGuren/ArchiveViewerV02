@@ -13,20 +13,37 @@ public static class ThumbnailService
     // Background color for compositing transparent images (matches theme #1e1e2e)
     private static readonly byte BgB = 46, BgG = 30, BgR = 30;
 
-    public static byte[]? GenerateThumbnailBytes(byte[] imageData)
+    public static byte[]? GenerateThumbnailBytes(byte[] imageData, string? fileName = null)
     {
         try
         {
             using var ms = new MemoryStream(imageData);
-            var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.OnLoad);
-            var frame = decoder.Frames[0];
+            BitmapSource source;
+            try
+            {
+                var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.OnLoad);
+                var frame = decoder.Frames[0];
 
-            double scale = Math.Min((double)MaxThumbPixels / frame.PixelWidth, (double)MaxThumbPixels / frame.PixelHeight);
-            if (scale > 1) scale = 1;
+                double scale = Math.Min((double)MaxThumbPixels / frame.PixelWidth, (double)MaxThumbPixels / frame.PixelHeight);
+                if (scale > 1) scale = 1;
 
-            BitmapSource source = frame;
-            if (Math.Abs(scale - 1.0) > 0.01)
-                source = new TransformedBitmap(frame, new ScaleTransform(scale, scale));
+                source = frame;
+                if (Math.Abs(scale - 1.0) > 0.01)
+                    source = new TransformedBitmap(frame, new ScaleTransform(scale, scale));
+            }
+            catch
+            {
+                // BitmapDecoder fails on some JPEGs with unusual metadata — fallback to BitmapImage
+                ms.Position = 0;
+                var bi = new BitmapImage();
+                bi.BeginInit();
+                bi.CacheOption = BitmapCacheOption.OnLoad;
+                bi.StreamSource = ms;
+                bi.DecodePixelHeight = MaxThumbPixels;
+                bi.EndInit();
+                bi.Freeze();
+                source = bi;
+            }
 
             // If image has alpha channel, composite onto dark background using pixel manipulation
             // (avoids RenderTargetBitmap/DrawingVisual which require STA thread)
@@ -66,8 +83,11 @@ public static class ThumbnailService
             encoder.Save(outMs);
             return outMs.ToArray();
         }
-        catch
+        catch (Exception ex)
         {
+            // デバッグ用ログ（異常調査時にコメント解除）
+            // System.Diagnostics.Debug.WriteLine($"[ThumbnailService] GenerateThumbnailBytes failed: {ex}");
+            // try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "archiveviewer_thumb_error.log"), $"[{DateTime.Now:HH:mm:ss}] file={fileName} {ex}\n---\n"); } catch { }
             return null;
         }
     }
