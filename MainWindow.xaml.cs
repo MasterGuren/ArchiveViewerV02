@@ -101,6 +101,8 @@ public partial class MainWindow : Window
 
     // Viewer
     private string _imageScaleMode = "Default";
+    private string _statusBeforeViewer = "";
+    private string _fileSizeBeforeViewer = "";
 
     // Undo
     private string? _undoSrc; // 移動先（現在のパス）
@@ -2162,6 +2164,8 @@ public partial class MainWindow : Window
         }
         _viewerIndex = index;
         _viewerOpen = true;
+        _statusBeforeViewer = TxtStatus.Text;
+        _fileSizeBeforeViewer = TxtFileSize.Text;
         HeaderBar.Visibility = Visibility.Collapsed;
         HeaderRow.Height = new GridLength(0);
         LeftSidebar.Margin = new Thickness(12, 12 + 56, 12, 12);
@@ -2235,6 +2239,8 @@ public partial class MainWindow : Window
         }
 
         ViewerInfo.Text = $"{containerName} — {fileName} ({index + 1}/{_imageNames.Count})";
+        TxtStatus.Text = $"{containerName} — {fileName}";
+        TxtFileSize.Text = $"{index + 1} / {_imageNames.Count}";
     }
 
     private void ImageScaleMode_Click(object sender, RoutedEventArgs e)
@@ -2268,6 +2274,8 @@ public partial class MainWindow : Window
         HeaderRow.Height = new GridLength(56);
         LeftSidebar.Margin = new Thickness(12);
         RightSidebar.Padding = new Thickness(0);
+        TxtStatus.Text = _statusBeforeViewer;
+        TxtFileSize.Text = _fileSizeBeforeViewer;
     }
 
     private void ViewerOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
