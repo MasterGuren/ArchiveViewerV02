@@ -119,6 +119,8 @@
 
                     <ToggleButton x:Name="BtnSortName" Content="名前順" Style="{StaticResource ModeButton}" Click="BtnSortName_Click" IsChecked="True" Margin="12,0,2,0"/>
                     <ToggleButton x:Name="BtnSortDate" Content="更新日順" Style="{StaticResource ModeButton}" Click="BtnSortDate_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnSortCreated" Content="作成日順" Style="{StaticResource ModeButton}" Click="BtnSortCreated_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnSortSize" Content="サイズ順" Style="{StaticResource ModeButton}" Click="BtnSortSize_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnSortRandom" Content="ランダム" Style="{StaticResource ModeButton}" Click="BtnSortRandom_Click" Margin="0,0,12,0"/>
 
                     <Border Width="1" Background="{DynamicResource ThemeBorder}" Margin="0,8"/>
@@ -148,9 +150,13 @@
                     <TextBlock x:Name="TxtPrevFile" Grid.Column="0" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="14"
                                VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,4,0"
                                TextTrimming="CharacterEllipsis"/>
-                    <!-- ◀ ボタン（中央固定） -->
-                    <Button x:Name="BtnPrev" Grid.Column="1" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
-                            Padding="6,4"/>
+                    <!-- ⏮ ◀ ボタン（中央固定） -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="BtnFirst" Content="⏮" Style="{StaticResource DarkButton}" Click="BtnFirst_Click"
+                                Padding="6,4" Margin="0,0,2,0" ToolTip="先頭へ"/>
+                        <Button x:Name="BtnPrev" Content="◀" Style="{StaticResource DarkButton}" Click="BtnPrev_Click"
+                                Padding="6,4"/>
+                    </StackPanel>
                     <!-- 現在ファイル名＋位置（中央固定幅） -->
                     <Border Grid.Column="2" Width="360" Margin="4,0">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -161,9 +167,13 @@
                                        VerticalAlignment="Center" Margin="4,0,0,0"/>
                         </StackPanel>
                     </Border>
-                    <!-- ▶ ボタン（中央固定） -->
-                    <Button x:Name="BtnNext" Grid.Column="3" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
-                            Padding="6,4"/>
+                    <!-- ▶ ⏭ ボタン（中央固定） -->
+                    <StackPanel Grid.Column="3" Orientation="Horizontal">
+                        <Button x:Name="BtnNext" Content="▶" Style="{StaticResource DarkButton}" Click="BtnNext_Click"
+                                Padding="6,4" Margin="0,0,2,0"/>
+                        <Button x:Name="BtnLast" Content="⏭" Style="{StaticResource DarkButton}" Click="BtnLast_Click"
+                                Padding="6,4" ToolTip="末尾へ"/>
+                    </StackPanel>
                     <!-- 次ファイル名（左寄せ、余白に収まる） -->
                     <TextBlock x:Name="TxtNextFile" Grid.Column="4" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="14"
                                VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
@@ -344,7 +354,12 @@
                     BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="1,0,0,0" Visibility="Collapsed">
                 <DockPanel Margin="12">
                     <Button DockPanel.Dock="Top" Content="選択範囲をリストに追加"
-                            Style="{StaticResource AccentButton}" Click="BtnAddToExtractList_Click" Margin="0,0,0,8"/>
+                            Style="{StaticResource AccentButton}" Click="BtnAddToExtractList_Click" Margin="0,0,0,4"/>
+                    <Button x:Name="BtnClearExtractList" DockPanel.Dock="Top" Content="リストクリア"
+                            Click="BtnClearExtractList_Click" Margin="0,0,0,8"
+                            Background="Transparent" Foreground="{DynamicResource ThemeSubtext}"
+                            BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="1"
+                            FontSize="12" Padding="4,2" IsEnabled="False"/>
                     <Button DockPanel.Dock="Bottom" Content="抽出実行"
                             Style="{StaticResource AccentButton}" Click="BtnExecuteExtract_Click" Margin="0,8,0,0"/>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">

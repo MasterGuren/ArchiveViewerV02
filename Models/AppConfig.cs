@@ -42,6 +42,9 @@ public class AppState
     [JsonPropertyName("folder_sort")]
     public string FolderSort { get; set; } = "name";
 
+    [JsonPropertyName("folder_sort_dir")]
+    public string FolderSortDir { get; set; } = "asc";
+
     [JsonPropertyName("card_orient")]
     public string CardOrient { get; set; } = "portrait";
 

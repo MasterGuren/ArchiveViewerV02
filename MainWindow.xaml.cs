@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private int _thumbSize = Theme.ThumbSizeDefault;
     private string _cardOrient = "portrait";
     private string _folderSort = "name";
+    private string _folderSortDir = "asc";
 
     // Navigation
     private List<string> _folderArchives = [];
@@ -143,6 +144,7 @@ public partial class MainWindow : Window
         _extractCurrentPreset = _config.State.ExtractCurrentPreset;
         _extractOutputFolder = _config.State.ExtractOutputFolder;
         _folderSort = _config.State.FolderSort;
+        _folderSortDir = string.IsNullOrEmpty(_config.State.FolderSortDir) ? "asc" : _config.State.FolderSortDir;
         _cardOrient = _config.State.CardOrient;
         _videoVolume = _config.State.VideoVolume;
         _videoEndAction = _config.State.VideoEndAction;
@@ -195,6 +197,7 @@ public partial class MainWindow : Window
         _config.State.ExtractCurrentPreset = _extractCurrentPreset;
         _config.State.ExtractOutputFolder = _extractOutputFolder;
         _config.State.FolderSort = _folderSort;
+        _config.State.FolderSortDir = _folderSortDir;
         _config.State.CardOrient = _cardOrient;
         _config.State.VideoVolume = _videoVolume;
         _config.State.VideoEndAction = _videoEndAction;
@@ -1931,24 +1934,7 @@ public partial class MainWindow : Window
                 if (ct.IsCancellationRequested) return;
 
                 // Sort
-                switch (_folderSort)
-                {
-                    case "name":
-                        files.Sort((a, b) => NaturalStringComparer.Instance.Compare(
-                            Path.GetFileName(a), Path.GetFileName(b)));
-                        break;
-                    case "date":
-                        files.Sort((a, b) => File.GetLastWriteTime(b).CompareTo(File.GetLastWriteTime(a)));
-                        break;
-                    case "random":
-                        var rng = new Random();
-                        for (int i = files.Count - 1; i > 0; i--)
-                        {
-                            int j = rng.Next(i + 1);
-                            (files[i], files[j]) = (files[j], files[i]);
-                        }
-                        break;
-                }
+                files = SortFiles(files, _folderSort, _folderSortDir, byFileName: true);
 
                 var names = files.Select(f => Path.GetFileName(f)).ToList();
 
@@ -2371,7 +2357,8 @@ public partial class MainWindow : Window
         if (dir == null) return;
 
         // Skip rebuild if same folder, same sort mode, and not forced (preserves random order)
-        if (!forceReshuffle && dir == _lastFolderDir && _folderSort == _lastFolderSortMode && _folderArchives.Count > 0)
+        var sortKey = _folderSort + ":" + _folderSortDir;
+        if (!forceReshuffle && dir == _lastFolderDir && sortKey == _lastFolderSortMode && _folderArchives.Count > 0)
         {
             _currentArchiveIndex = _folderArchives.FindIndex(f =>
                 string.Equals(Path.GetFullPath(f), Path.GetFullPath(_archivePath!), StringComparison.OrdinalIgnoreCase));
@@ -2384,23 +2371,11 @@ public partial class MainWindow : Window
                 .Where(f => Theme.ArchiveExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToList();
 
-            switch (_folderSort)
-            {
-                case "name":
-                    files.Sort(NaturalStringComparer.Instance);
-                    break;
-                case "date":
-                    files = files.OrderByDescending(f => File.GetLastWriteTime(f)).ToList();
-                    break;
-                case "random":
-                    var rnd = new Random();
-                    files = files.OrderBy(_ => rnd.Next()).ToList();
-                    break;
-            }
+            files = SortFiles(files, _folderSort, _folderSortDir);
 
             _folderArchives = files;
             _lastFolderDir = dir;
-            _lastFolderSortMode = _folderSort;
+            _lastFolderSortMode = sortKey;
             _currentArchiveIndex = _folderArchives.FindIndex(f =>
                 string.Equals(Path.GetFullPath(f), Path.GetFullPath(_archivePath!), StringComparison.OrdinalIgnoreCase));
         }
@@ -2489,6 +2464,41 @@ public partial class MainWindow : Window
 
     private void BtnPrev_Click(object sender, RoutedEventArgs e) => NavigateFile(-1);
     private void BtnNext_Click(object sender, RoutedEventArgs e) => NavigateFile(1);
+    private void BtnFirst_Click(object sender, RoutedEventArgs e) => JumpToEnd(last: false);
+    private void BtnLast_Click(object sender, RoutedEventArgs e) => JumpToEnd(last: true);
+
+    private void JumpToEnd(bool last)
+    {
+        if (_mode == "image")
+        {
+            if (_cards.Count == 0) { SetStatus("画像フォルダが開かれていません"); return; }
+            int idx = last ? _cards.Count - 1 : 0;
+            _selectStart = idx;
+            _selectEnd = null;
+            _selectionConfirmed = false;
+            UpdateSelectionVisuals();
+            UpdateSelectionInfo();
+            _cards[idx].BringIntoView();
+            return;
+        }
+
+        if (_mode == "video")
+        {
+            if (_videoFiles.Count == 0 || _currentVideoIndex < 0) { SetStatus("動画が開かれていません"); return; }
+            int idx = last ? _videoFiles.Count - 1 : 0;
+            if (idx != _currentVideoIndex) PlayVideo(_videoFiles[idx]);
+            return;
+        }
+
+        if (_folderArchives.Count == 0 || _currentArchiveIndex < 0)
+        {
+            SetStatus("ファイルが開かれていません");
+            return;
+        }
+        int aidx = last ? _folderArchives.Count - 1 : 0;
+        if (aidx != _currentArchiveIndex)
+            LoadArchive(_folderArchives[aidx], keepViewer: _viewerOpen);
+    }
 
     // ======== SORTING ========
 
@@ -2496,28 +2506,90 @@ public partial class MainWindow : Window
     {
         BtnSortName.IsChecked = _folderSort == "name";
         BtnSortDate.IsChecked = _folderSort == "date";
+        BtnSortCreated.IsChecked = _folderSort == "created";
+        BtnSortSize.IsChecked = _folderSort == "size";
         BtnSortRandom.IsChecked = _folderSort == "random";
+
+        string arrow = _folderSortDir == "asc" ? " ▲" : " ▼";
+        BtnSortName.Content = "名前順" + (_folderSort == "name" ? arrow : "");
+        BtnSortDate.Content = "更新日順" + (_folderSort == "date" ? arrow : "");
+        BtnSortCreated.Content = "作成日順" + (_folderSort == "created" ? arrow : "");
+        BtnSortSize.Content = "サイズ順" + (_folderSort == "size" ? arrow : "");
     }
 
-    private void BtnSortName_Click(object sender, RoutedEventArgs e)
+    private void SelectSort(string mode)
     {
-        _folderSort = "name";
+        bool sameType = _folderSort == mode;
+        if (mode == "random")
+        {
+            _folderSort = "random";
+            UpdateSortButtons();
+            RebuildFileListForSort(forceReshuffle: true);
+            return;
+        }
+
+        if (sameType)
+        {
+            _folderSortDir = _folderSortDir == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            _folderSort = mode;
+            _folderSortDir = mode == "name" ? "asc" : "desc";
+        }
         UpdateSortButtons();
         RebuildFileListForSort();
     }
 
-    private void BtnSortDate_Click(object sender, RoutedEventArgs e)
+    private void BtnSortName_Click(object sender, RoutedEventArgs e) => SelectSort("name");
+    private void BtnSortDate_Click(object sender, RoutedEventArgs e) => SelectSort("date");
+    private void BtnSortCreated_Click(object sender, RoutedEventArgs e) => SelectSort("created");
+    private void BtnSortSize_Click(object sender, RoutedEventArgs e) => SelectSort("size");
+    private void BtnSortRandom_Click(object sender, RoutedEventArgs e) => SelectSort("random");
+
+    private static List<string> SortFiles(List<string> files, string mode, string dir, bool byFileName = false)
     {
-        _folderSort = "date";
-        UpdateSortButtons();
-        RebuildFileListForSort();
+        switch (mode)
+        {
+            case "name":
+                if (byFileName)
+                    files.Sort((a, b) => NaturalStringComparer.Instance.Compare(Path.GetFileName(a), Path.GetFileName(b)));
+                else
+                    files.Sort(NaturalStringComparer.Instance);
+                if (dir == "desc") files.Reverse();
+                return files;
+            case "date":
+                return dir == "asc"
+                    ? files.OrderBy(f => SafeLastWrite(f)).ToList()
+                    : files.OrderByDescending(f => SafeLastWrite(f)).ToList();
+            case "created":
+                return dir == "asc"
+                    ? files.OrderBy(f => SafeCreation(f)).ToList()
+                    : files.OrderByDescending(f => SafeCreation(f)).ToList();
+            case "size":
+                return dir == "asc"
+                    ? files.OrderBy(f => SafeSize(f)).ToList()
+                    : files.OrderByDescending(f => SafeSize(f)).ToList();
+            case "random":
+                var rnd = new Random();
+                return files.OrderBy(_ => rnd.Next()).ToList();
+        }
+        return files;
     }
 
-    private void BtnSortRandom_Click(object sender, RoutedEventArgs e)
+    private static DateTime SafeLastWrite(string path)
     {
-        _folderSort = "random";
-        UpdateSortButtons();
-        RebuildFileListForSort(forceReshuffle: true);
+        try { return File.GetLastWriteTime(path); } catch { return DateTime.MinValue; }
+    }
+
+    private static DateTime SafeCreation(string path)
+    {
+        try { return File.GetCreationTime(path); } catch { return DateTime.MinValue; }
+    }
+
+    private static long SafeSize(string path)
+    {
+        try { return new FileInfo(path).Length; } catch { return 0; }
     }
 
     private void RebuildFileListForSort(bool forceReshuffle = false)
@@ -2990,6 +3062,18 @@ public partial class MainWindow : Window
         BtnClearSelection_Click(sender, e);
     }
 
+    private void BtnClearExtractList_Click(object sender, RoutedEventArgs e)
+    {
+        if (_extractEntries.Count == 0) return;
+        var result = MessageBox.Show(
+            $"抽出リスト（{_extractEntries.Count}件）をすべてクリアしますか？",
+            "確認", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (result != MessageBoxResult.OK) return;
+        _extractEntries.Clear();
+        RebuildExtractList();
+        SetStatus("抽出リストをクリアしました");
+    }
+
     private void BtnExecuteExtract_Click(object sender, RoutedEventArgs e)
     {
         if (_extractEntries.Count == 0 || _archivePath == null) return;
@@ -3043,6 +3127,7 @@ public partial class MainWindow : Window
     private void RebuildExtractList()
     {
         ExtractListPanel.Children.Clear();
+        BtnClearExtractList.IsEnabled = _extractEntries.Count > 0;
         for (int i = 0; i < _extractEntries.Count; i++)
         {
             var entry = _extractEntries[i];
@@ -3304,7 +3389,8 @@ public partial class MainWindow : Window
         if (dir == null) return;
 
         // Skip rebuild if same folder, same sort mode, and not forced (preserves random order)
-        if (!forceReshuffle && dir == _lastVideoDirCache && _folderSort == _lastVideoSortMode && _videoFiles.Count > 0)
+        var sortKey = _folderSort + ":" + _folderSortDir;
+        if (!forceReshuffle && dir == _lastVideoDirCache && sortKey == _lastVideoSortMode && _videoFiles.Count > 0)
         {
             _currentVideoIndex = _videoFiles.FindIndex(f =>
                 string.Equals(Path.GetFullPath(f), Path.GetFullPath(_videoPath!), StringComparison.OrdinalIgnoreCase));
@@ -3317,23 +3403,11 @@ public partial class MainWindow : Window
                 .Where(f => Theme.VideoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                 .ToList();
 
-            switch (_folderSort)
-            {
-                case "name":
-                    files.Sort(NaturalStringComparer.Instance);
-                    break;
-                case "date":
-                    files = files.OrderByDescending(f => File.GetLastWriteTime(f)).ToList();
-                    break;
-                case "random":
-                    var rnd = new Random();
-                    files = files.OrderBy(_ => rnd.Next()).ToList();
-                    break;
-            }
+            files = SortFiles(files, _folderSort, _folderSortDir);
 
             _videoFiles = files;
             _lastVideoDirCache = dir;
-            _lastVideoSortMode = _folderSort;
+            _lastVideoSortMode = sortKey;
             _currentVideoIndex = _videoFiles.FindIndex(f =>
                 string.Equals(Path.GetFullPath(f), Path.GetFullPath(_videoPath!), StringComparison.OrdinalIgnoreCase));
         }

@@ -86,6 +86,10 @@ public class ConfigService
             config.State.ExtractOutputFolder = eof.GetString() ?? "";
         if (root.TryGetProperty("folder_sort", out var fs))
             config.State.FolderSort = fs.GetString() ?? "name";
+        if (root.TryGetProperty("folder_sort_dir", out var fsd))
+            config.State.FolderSortDir = fsd.GetString() ?? "asc";
+        else if (config.State.FolderSort == "date")
+            config.State.FolderSortDir = "desc";
         if (root.TryGetProperty("card_orient", out var co))
             config.State.CardOrient = co.GetString() ?? "portrait";
         if (root.TryGetProperty("video_volume", out var vv))
