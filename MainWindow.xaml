@@ -362,7 +362,7 @@
                             FontSize="12" Padding="4,2" IsEnabled="False"/>
                     <Button DockPanel.Dock="Bottom" Content="抽出実行"
                             Style="{StaticResource AccentButton}" Click="BtnExecuteExtract_Click" Margin="0,8,0,0"/>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer x:Name="RightSidebarScroller" VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="ExtractListPanel"/>
                     </ScrollViewer>
                 </DockPanel>
@@ -372,8 +372,14 @@
         <!-- STATUS BAR -->
         <Border Grid.Row="2" Background="{DynamicResource ThemePanel}" BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,1,0,0">
             <DockPanel Margin="8,0">
-                <TextBlock x:Name="TxtFileSize" DockPanel.Dock="Left" Foreground="{DynamicResource ThemeSubtext}"
-                           FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock x:Name="TxtFileSize" Foreground="{DynamicResource ThemeSubtext}"
+                               FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtFileDates" Foreground="{DynamicResource ThemeSubtext}"
+                               FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    <TextBlock x:Name="TxtFileCounter" Foreground="{DynamicResource ThemeSubtext}"
+                               FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                </StackPanel>
                 <TextBlock x:Name="TxtSelectionInfo" DockPanel.Dock="Right" Foreground="{DynamicResource ThemeSubtext}"
                            FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center"/>
                 <TextBlock x:Name="TxtStatus" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"

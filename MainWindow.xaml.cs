@@ -103,7 +103,6 @@ public partial class MainWindow : Window
     // Viewer
     private string _imageScaleMode = "Default";
     private string _statusBeforeViewer = "";
-    private string _fileSizeBeforeViewer = "";
 
     // Undo
     private string? _undoSrc; // 移動先（現在のパス）
@@ -280,6 +279,8 @@ public partial class MainWindow : Window
     {
         SetStatus("");
         TxtFileSize.Text = "";
+        TxtFileDates.Text = "";
+        TxtFileCounter.Text = "";
         TxtCurrentFile.Text = "";
         TxtFilePosition.Text = "";
         TxtPrevFile.Text = "";
@@ -1984,6 +1985,8 @@ public partial class MainWindow : Window
                     ProgressOverlay.Visibility = Visibility.Collapsed;
                     SetStatus($"{Path.GetFileName(folderPath)} — {names.Count}枚");
                     TxtFileSize.Text = "";
+                    TxtFileDates.Text = "";
+                    TxtFileCounter.Text = "";
                     UpdateNavigation();
                     // ランダム時は1枚目を選択
                     if (_folderSort == "random" && _cards.Count > 0)
@@ -2151,7 +2154,6 @@ public partial class MainWindow : Window
         _viewerIndex = index;
         _viewerOpen = true;
         _statusBeforeViewer = TxtStatus.Text;
-        _fileSizeBeforeViewer = TxtFileSize.Text;
         HeaderBar.Visibility = Visibility.Collapsed;
         HeaderRow.Height = new GridLength(0);
         LeftSidebar.Margin = new Thickness(12, 12 + 56, 12, 12);
@@ -2226,7 +2228,18 @@ public partial class MainWindow : Window
 
         ViewerInfo.Text = $"{containerName} — {fileName} ({index + 1}/{_imageNames.Count})";
         TxtStatus.Text = $"{containerName} — {fileName}";
-        TxtFileSize.Text = $"{index + 1} / {_imageNames.Count}";
+
+        if (_mode == "image")
+        {
+            UpdateFileSize(_imagePaths[index]);
+        }
+        else
+        {
+            // Archive viewer: size = uncompressed entry size, dates = archive's dates
+            UpdateFileSize(_archivePath);
+            TxtFileSize.Text = FormatSize(data.Length);
+        }
+        TxtFileCounter.Text = $"{index + 1} / {_imageNames.Count}";
     }
 
     private void ImageScaleMode_Click(object sender, RoutedEventArgs e)
@@ -2261,7 +2274,16 @@ public partial class MainWindow : Window
         LeftSidebar.Margin = new Thickness(12);
         RightSidebar.Padding = new Thickness(0);
         TxtStatus.Text = _statusBeforeViewer;
-        TxtFileSize.Text = _fileSizeBeforeViewer;
+        TxtFileCounter.Text = "";
+        if (_mode == "image")
+        {
+            TxtFileSize.Text = "";
+            TxtFileDates.Text = "";
+        }
+        else
+        {
+            UpdateFileSize(_archivePath);
+        }
     }
 
     private void ViewerOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -3818,6 +3840,10 @@ public partial class MainWindow : Window
             {
                 SidebarScroller.ScrollToVerticalOffset(SidebarScroller.VerticalOffset - e.Delta);
             }
+            else if (RightSidebar.IsVisible && RightSidebarScroller.IsMouseOver)
+            {
+                RightSidebarScroller.ScrollToVerticalOffset(RightSidebarScroller.VerticalOffset - e.Delta);
+            }
             else
             {
                 ViewerNavigate(e.Delta > 0 ? -1 : 1);
@@ -3947,10 +3973,22 @@ public partial class MainWindow : Window
     {
         if (path != null && File.Exists(path))
         {
-            try { TxtFileSize.Text = FormatSize(new FileInfo(path).Length); return; }
+            try
+            {
+                var fi = new FileInfo(path);
+                TxtFileSize.Text = FormatSize(fi.Length);
+                TxtFileDates.Text = FormatDates(fi.CreationTime, fi.LastWriteTime);
+                return;
+            }
             catch { }
         }
         TxtFileSize.Text = "";
+        TxtFileDates.Text = "";
+    }
+
+    private static string FormatDates(DateTime created, DateTime modified)
+    {
+        return $"作成 {created:yyyy-MM-dd HH:mm}  |  更新 {modified:yyyy-MM-dd HH:mm}";
     }
 
     private void TxtStatus_Click(object sender, MouseButtonEventArgs e)
