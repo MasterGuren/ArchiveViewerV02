@@ -13,16 +13,26 @@ public partial class TagPickerDialog : Window
     /// <summary>
     /// enforceRequiredCategories: trueの場合、必須指定された中カテゴリごとに最低1つタグを選ぶまでOKボタンを押せない。
     /// ファイルへのタグ付与では強制し、検索の絞り込み用ピッカーでは強制しない（部分的な絞り込みを妨げないため）。
+    /// initialWidth/initialHeight: 前回リサイズしたサイズを呼び出し側から復元するための初期値（省略時はXAMLの既定値）。
     /// </summary>
-    public TagPickerDialog(IEnumerable<long> initiallySelected, bool enforceRequiredCategories = true)
+    public TagPickerDialog(IEnumerable<long> initiallySelected, bool enforceRequiredCategories = true,
+        double? initialWidth = null, double? initialHeight = null)
     {
         InitializeComponent();
         SelectedTagIds = [.. initiallySelected];
         _enforceRequiredCategories = enforceRequiredCategories;
+        if (initialWidth.HasValue) Width = initialWidth.Value;
+        if (initialHeight.HasValue) Height = initialHeight.Value;
         RefreshList();
+        // 初回はActualHeightがまだ0のため概算で組んでいる。実レイアウト確定後に高さに基づいて組み直す。
+        Loaded += (_, _) => RefreshList();
     }
 
-    private const double ColumnWidth = 220;
+    private void Window_SizeChanged(object sender, SizeChangedEventArgs e) => RefreshList();
+
+    private const double ColumnWidth = 190;
+    private const double RowHeight = 21;
+    private const double FallbackColumnHeight = 480;
 
     private void TxtFilter_TextChanged(object sender, TextChangedEventArgs e) => RefreshList();
 
@@ -32,6 +42,11 @@ public partial class TagPickerDialog : Window
     /// </summary>
     private static bool Matches(string text, string filter) => text.Contains(filter, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 大カテゴリごとに1列を固定すると、タグが少ないカテゴリだけの列に余白ができてしまうので、
+    /// 見出し・タグ行をすべてフラットな行の列として並べ、列の目標行数に達したら次の列へ、
+    /// という形で詰めていく（カテゴリの途中で列をまたいでもよい前提）。読み順は保ったまま隙間を減らす。
+    /// </summary>
     private void RefreshList()
     {
         ColumnsPanel.Children.Clear();
@@ -39,11 +54,12 @@ public partial class TagPickerDialog : Window
         var filter = TxtFilter.Text.Trim();
         var hasFilter = !string.IsNullOrEmpty(filter);
 
+        var rows = new List<UIElement>();
+
         foreach (var major in TagRepository.GetMajorCategories())
         {
             var majorMatches = !hasFilter || Matches(major.Name, filter);
-            var column = new StackPanel { Width = ColumnWidth, Margin = new Thickness(0, 0, 16, 0) };
-            var columnHasContent = false;
+            var majorHeaderAdded = false;
 
             foreach (var minor in TagRepository.GetMinorCategories(major.Id))
             {
@@ -52,57 +68,52 @@ public partial class TagPickerDialog : Window
                 var visibleTags = minorMatches ? tags : tags.Where(t => Matches(t.Name, filter)).ToList();
                 if (visibleTags.Count == 0) continue;
 
-                if (!columnHasContent)
+                if (!majorHeaderAdded)
                 {
-                    column.Children.Add(new TextBlock
+                    rows.Add(new TextBlock
                     {
                         Text = major.Name,
                         Foreground = Theme.TextBrush,
                         FontFamily = new FontFamily(Theme.FontFamily),
                         FontSize = 15,
                         FontWeight = FontWeights.Bold,
-                        Margin = new Thickness(0, 0, 0, 6)
+                        Margin = new Thickness(0, 0, 0, 4)
                     });
-                    columnHasContent = true;
+                    majorHeaderAdded = true;
                 }
 
-                column.Children.Add(new TextBlock
+                rows.Add(new TextBlock
                 {
                     Text = minor.Name,
                     Foreground = Theme.SubtextBrush,
                     FontFamily = new FontFamily(Theme.FontFamily),
                     FontSize = 13,
-                    Margin = new Thickness(0, 6, 0, 2)
+                    Margin = new Thickness(0, 4, 0, 1)
                 });
 
                 foreach (var tag in visibleTags)
-                    column.Children.Add(BuildTagRow(tag, 12, usageCounts.GetValueOrDefault(tag.Id)));
+                    rows.Add(BuildTagRow(tag, 8, usageCounts.GetValueOrDefault(tag.Id)));
             }
-
-            if (columnHasContent)
-                ColumnsPanel.Children.Add(column);
         }
 
         var uncategorized = TagRepository.GetAllTags().Where(t => t.MinorCategoryId == null).ToList();
         var visibleUncategorized = hasFilter ? uncategorized.Where(t => Matches(t.Name, filter)).ToList() : uncategorized;
         if (visibleUncategorized.Count > 0)
         {
-            var column = new StackPanel { Width = ColumnWidth, Margin = new Thickness(0, 0, 16, 0) };
-            column.Children.Add(new TextBlock
+            rows.Add(new TextBlock
             {
                 Text = "未分類",
                 Foreground = Theme.TextBrush,
                 FontFamily = new FontFamily(Theme.FontFamily),
                 FontSize = 15,
                 FontWeight = FontWeights.Bold,
-                Margin = new Thickness(0, 0, 0, 6)
+                Margin = new Thickness(0, 0, 0, 4)
             });
             foreach (var tag in visibleUncategorized)
-                column.Children.Add(BuildTagRow(tag, 0, usageCounts.GetValueOrDefault(tag.Id)));
-            ColumnsPanel.Children.Add(column);
+                rows.Add(BuildTagRow(tag, 0, usageCounts.GetValueOrDefault(tag.Id)));
         }
 
-        if (hasFilter && ColumnsPanel.Children.Count == 0)
+        if (hasFilter && rows.Count == 0)
         {
             ColumnsPanel.Children.Add(new TextBlock
             {
@@ -111,6 +122,32 @@ public partial class TagPickerDialog : Window
                 FontFamily = new FontFamily(Theme.FontFamily),
                 FontSize = 13
             });
+            UpdateOkButtonState();
+            return;
+        }
+
+        // 表示領域の高さいっぱいまで詰めたら次の列へ改行する（列数は揃えない）。
+        var availableHeight = ContentScroller.ActualHeight > 0 ? ContentScroller.ActualHeight : FallbackColumnHeight;
+        var rowsPerColumn = Math.Max(1, (int)(availableHeight / RowHeight));
+
+        StackPanel NewColumn()
+        {
+            var c = new StackPanel { Width = ColumnWidth, Margin = new Thickness(0, 0, 12, 0) };
+            ColumnsPanel.Children.Add(c);
+            return c;
+        }
+
+        var column = NewColumn();
+        var colCount = 0;
+        foreach (var row in rows)
+        {
+            if (colCount >= rowsPerColumn)
+            {
+                column = NewColumn();
+                colCount = 0;
+            }
+            column.Children.Add(row);
+            colCount++;
         }
 
         UpdateOkButtonState();
@@ -175,7 +212,7 @@ public partial class TagPickerDialog : Window
         {
             Content = panel,
             Foreground = Theme.TextBrush,
-            Margin = new Thickness(indent, 2, 0, 0),
+            Margin = new Thickness(indent, 1, 0, 0),
             IsChecked = SelectedTagIds.Contains(tag.Id),
             Tag = tag.Id
         };

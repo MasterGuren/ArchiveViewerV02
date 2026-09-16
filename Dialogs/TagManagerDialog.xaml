@@ -32,6 +32,11 @@
                     <Button Content="削除" Width="55" Padding="4" Click="BtnDeleteMajor_Click"
                             Background="#7f1d1d" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                 </StackPanel>
+                <TextBox x:Name="TxtQuickAddMajor" DockPanel.Dock="Bottom" Margin="0,6,0,0"
+                         Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"
+                         CaretBrush="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13" Padding="4"
+                         KeyDown="TxtQuickAddMajor_KeyDown"
+                         ToolTip="カテゴリ名を入力してEnterで末尾に追加（連続入力できます）"/>
                 <ListBox x:Name="MajorList" Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}"
                          BorderBrush="{DynamicResource ThemeBorder}" FontFamily="Yu Gothic UI" FontSize="13"
                          SelectionChanged="MajorList_SelectionChanged"
@@ -57,6 +62,11 @@
                 </StackPanel>
                 <Button DockPanel.Dock="Bottom" Content="⭐ 必須の切り替え" Padding="4" Margin="0,0,0,4" Click="BtnToggleMinorRequired_Click"
                         Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                <TextBox x:Name="TxtQuickAddMinor" DockPanel.Dock="Bottom" Margin="0,6,0,0"
+                         Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"
+                         CaretBrush="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13" Padding="4"
+                         KeyDown="TxtQuickAddMinor_KeyDown"
+                         ToolTip="カテゴリ名を入力してEnterで末尾に追加（連続入力できます）"/>
                 <ListBox x:Name="MinorList" Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}"
                          BorderBrush="{DynamicResource ThemeBorder}" FontFamily="Yu Gothic UI" FontSize="13"
                          SelectionChanged="MinorList_SelectionChanged"
@@ -80,6 +90,11 @@
                     <Button Content="削除" Width="55" Padding="4" Click="BtnDeleteTag_Click"
                             Background="#7f1d1d" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                 </StackPanel>
+                <TextBox x:Name="TxtQuickAddTag" DockPanel.Dock="Bottom" Margin="0,6,0,0"
+                         Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"
+                         CaretBrush="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="13" Padding="4"
+                         KeyDown="TxtQuickAddTag_KeyDown"
+                         ToolTip="タグ名を入力してEnterで末尾に追加（連続入力できます）"/>
                 <ListBox x:Name="TagList" Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}"
                          BorderBrush="{DynamicResource ThemeBorder}" FontFamily="Yu Gothic UI" FontSize="13"
                          AllowDrop="True"

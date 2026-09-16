@@ -95,4 +95,31 @@ public class AppState
 
     [JsonPropertyName("tag_disabled_folders")]
     public List<string> TagDisabledFolders { get; set; } = [];
+
+    [JsonPropertyName("tag_picker_width")]
+    public double TagPickerDialogWidth { get; set; } = 1240;
+
+    [JsonPropertyName("tag_picker_height")]
+    public double TagPickerDialogHeight { get; set; } = 720;
+
+    [JsonPropertyName("tag_search_tag_ids")]
+    public List<long> TagSearchTagIds { get; set; } = [];
+
+    [JsonPropertyName("tag_search_match_all")]
+    public bool TagSearchMatchAll { get; set; }
+
+    [JsonPropertyName("tag_search_text")]
+    public string TagSearchText { get; set; } = "";
+
+    [JsonPropertyName("tag_search_no_tags")]
+    public bool TagSearchNoTags { get; set; }
+
+    [JsonPropertyName("tag_search_has_tags")]
+    public bool TagSearchHasTags { get; set; }
+
+    [JsonPropertyName("tag_search_no_title")]
+    public bool TagSearchNoTitle { get; set; }
+
+    [JsonPropertyName("tag_search_has_title")]
+    public bool TagSearchHasTitle { get; set; }
 }

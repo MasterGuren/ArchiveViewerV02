@@ -30,6 +30,8 @@ public partial class MainWindow : Window
     private List<string> _tagFileList = [];
     private int _tagFileIndex = -1;
     private List<long> _tagSearchTagIds = [];
+    private double _tagPickerDialogWidth = 1240;
+    private double _tagPickerDialogHeight = 720;
 
     // Archive state
     private string? _archivePath;
@@ -118,6 +120,7 @@ public partial class MainWindow : Window
 
     // Loading
     private CancellationTokenSource? _loadCts;
+    private bool _loadingConfig;
 
     [DllImport("shell32.dll")]
     private static extern void SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string appId);
@@ -135,14 +138,16 @@ public partial class MainWindow : Window
         try { SetCurrentProcessExplicitAppUserModelID("ArchiveViewer.V02"); } catch { }
 
         _config = ConfigService.Load();
+        _loadingConfig = true;
         LoadConfigToState();
+        _loadingConfig = false;
+        TagDatabaseService.SetMode(_tagDbMode == "production" ? TagDbMode.Production : TagDbMode.Demo);
+        UpdateTagDbModeButton();
         SwitchMode(_config.State.LastMode);
         UpdateSortButtons();
         UpdateOrientButtons();
         UpdateVideoEndActionButtons();
         UpdateVideoScrollButtons();
-        TagDatabaseService.SetMode(_tagDbMode == "production" ? TagDbMode.Production : TagDbMode.Demo);
-        UpdateTagDbModeButton();
 
     }
 
@@ -162,6 +167,17 @@ public partial class MainWindow : Window
         _tagDbMode = string.IsNullOrEmpty(_config.State.TagDbMode) ? "demo" : _config.State.TagDbMode;
         _tagSourceFolders = _config.State.TagSourceFolders ?? [];
         _tagDisabledFolders = _config.State.TagDisabledFolders ?? [];
+        _tagPickerDialogWidth = _config.State.TagPickerDialogWidth > 0 ? _config.State.TagPickerDialogWidth : 1240;
+        _tagPickerDialogHeight = _config.State.TagPickerDialogHeight > 0 ? _config.State.TagPickerDialogHeight : 720;
+
+        _tagSearchTagIds = _config.State.TagSearchTagIds ?? [];
+        RbTagSearchAnd.IsChecked = _config.State.TagSearchMatchAll;
+        RbTagSearchOr.IsChecked = !_config.State.TagSearchMatchAll;
+        TxtTagSearchText.Text = _config.State.TagSearchText ?? "";
+        ChkSearchNoTags.IsChecked = _config.State.TagSearchNoTags;
+        ChkSearchHasTags.IsChecked = _config.State.TagSearchHasTags;
+        ChkSearchNoTitle.IsChecked = _config.State.TagSearchNoTitle;
+        ChkSearchHasTitle.IsChecked = _config.State.TagSearchHasTitle;
 
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
         _imagePresets = _config.ImagePresets;
@@ -229,6 +245,15 @@ public partial class MainWindow : Window
         _config.State.TagDbMode = _tagDbMode;
         _config.State.TagSourceFolders = _tagSourceFolders;
         _config.State.TagDisabledFolders = _tagDisabledFolders;
+        _config.State.TagPickerDialogWidth = _tagPickerDialogWidth;
+        _config.State.TagPickerDialogHeight = _tagPickerDialogHeight;
+        _config.State.TagSearchTagIds = _tagSearchTagIds;
+        _config.State.TagSearchMatchAll = RbTagSearchAnd.IsChecked == true;
+        _config.State.TagSearchText = TxtTagSearchText.Text;
+        _config.State.TagSearchNoTags = ChkSearchNoTags.IsChecked == true;
+        _config.State.TagSearchHasTags = ChkSearchHasTags.IsChecked == true;
+        _config.State.TagSearchNoTitle = ChkSearchNoTitle.IsChecked == true;
+        _config.State.TagSearchHasTitle = ChkSearchHasTitle.IsChecked == true;
     }
 
     /// <summary>
@@ -725,6 +750,9 @@ public partial class MainWindow : Window
         {
             AddSidebarLabel("作業フォルダ");
             AddSidebarText(Path.GetDirectoryName(_archivePath) ?? "");
+            var openFileLocationBtn = CreateSidebarButton("📂 ファイルの場所を開く", () => OpenCurrentFileLocationInExplorer());
+            openFileLocationBtn.Margin = new Thickness(0, 4, 0, 0);
+            LeftSidebar.Children.Add(openFileLocationBtn);
             AddSidebarSeparator();
 
             AddSidebarLabel("作品名");
@@ -750,12 +778,17 @@ public partial class MainWindow : Window
             AddSidebarSeparator();
 
             AddSidebarLabel("タグ");
+            var tagWrapPanel = new WrapPanel();
             foreach (var tag in GetCurrentFileTags())
-                LeftSidebar.Children.Add(BuildTagChipRow(tag));
+                tagWrapPanel.Children.Add(BuildTagChipRow(tag));
+            LeftSidebar.Children.Add(tagWrapPanel);
 
             var addTagBtn = CreateSidebarButton("+ タグを追加", () => OpenTagPickerForCurrentFile());
             addTagBtn.Margin = new Thickness(0, 4, 0, 0);
             LeftSidebar.Children.Add(addTagBtn);
+
+            AddSidebarSeparator();
+            BuildInlineTagCheckboxArea();
 
             AddSidebarSeparator();
 
@@ -911,8 +944,13 @@ public partial class MainWindow : Window
 
     private void BtnTagSearchPickTags_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new TagPickerDialog(_tagSearchTagIds, enforceRequiredCategories: false) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
+        var dlg = new TagPickerDialog(_tagSearchTagIds, enforceRequiredCategories: false,
+            _tagPickerDialogWidth, _tagPickerDialogHeight) { Owner = this };
+        var result = dlg.ShowDialog();
+        _tagPickerDialogWidth = dlg.Width;
+        _tagPickerDialogHeight = dlg.Height;
+        SaveStateOnly();
+        if (result != true) return;
         _tagSearchTagIds = [.. dlg.SelectedTagIds];
         RebuildTagSearchChips();
     }
@@ -931,7 +969,19 @@ public partial class MainWindow : Window
         else if (sender == ChkSearchHasTags && ChkSearchHasTags.IsChecked == true) ChkSearchNoTags.IsChecked = false;
         else if (sender == ChkSearchNoTitle && ChkSearchNoTitle.IsChecked == true) ChkSearchHasTitle.IsChecked = false;
         else if (sender == ChkSearchHasTitle && ChkSearchHasTitle.IsChecked == true) ChkSearchNoTitle.IsChecked = false;
+        SaveStateOnly();
     }
+
+    private void TagSearchRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        // InitializeComponent()中のXAML既定値設定や、起動時のLoadConfigToState()での復元による発火時は
+        // まだ_modeがSwitchMode()で確定していないため、ここでSaveStateOnly()するとLastModeが「browse」で
+        // 上書き保存されてしまう。設定読み込み中は無視する。
+        if (_config == null || _loadingConfig) return;
+        SaveStateOnly();
+    }
+
+    private void TxtTagSearchText_LostFocus(object sender, RoutedEventArgs e) => SaveStateOnly();
 
     // リスト作成・検索・並べ替えの非同期処理を、直前の実行と差し替える時にキャンセルするためのトークン
     private CancellationTokenSource? _tagListCts;
@@ -1437,7 +1487,7 @@ public partial class MainWindow : Window
 
     private StackPanel BuildTagChipRow(Tag tag)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 6, 6) };
 
         var bgBrush = string.IsNullOrEmpty(tag.Color)
             ? Theme.PanelBrush
@@ -1461,12 +1511,146 @@ public partial class MainWindow : Window
             }
         };
         row.Children.Add(pill);
-
-        var removeBtn = CreateSidebarButton("×", () => RemoveTagFromCurrentFile(tag.Id));
-        removeBtn.Margin = new Thickness(4, 0, 0, 0);
-        removeBtn.Padding = new Thickness(6, 0, 6, 0);
-        row.Children.Add(removeBtn);
         return row;
+    }
+
+    /// <summary>ダイアログを開かずに左ペイン上でタグの付け外しができるよう、全タグをカテゴリ別チェックボックスで並べる。
+    /// カテゴリ内は2列（Z字：左→右、上→下）で詰めて表示する。</summary>
+    private void BuildInlineTagCheckboxArea()
+    {
+        var currentIds = GetCurrentFileTags().Select(t => t.Id).ToHashSet();
+        var usageCounts = TagRepository.GetTagUsageCounts();
+
+        AddSidebarLabel("タグ一覧（チェックで付け外し）");
+
+        System.Windows.Controls.CheckBox BuildCheckbox(Tag tag)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+            var swatch = new Border
+            {
+                Width = 12,
+                Height = 12,
+                CornerRadius = new CornerRadius(3),
+                Margin = new Thickness(0, 0, 6, 0),
+                BorderThickness = new Thickness(1),
+                BorderBrush = Theme.BorderBrush,
+                Background = string.IsNullOrEmpty(tag.Color)
+                    ? Brushes.Transparent
+                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString(tag.Color)!)
+            };
+            panel.Children.Add(swatch);
+            panel.Children.Add(new TextBlock { Text = tag.Name, Foreground = Theme.TextBrush, FontFamily = new FontFamily(Theme.FontFamily), FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis });
+            panel.Children.Add(new TextBlock
+            {
+                Text = $" ({usageCounts.GetValueOrDefault(tag.Id)})",
+                Foreground = Theme.SubtextBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = 11
+            });
+
+            var checkBox = new System.Windows.Controls.CheckBox
+            {
+                Content = panel,
+                Foreground = Theme.TextBrush,
+                Margin = new Thickness(0, 2, 4, 2),
+                IsChecked = currentIds.Contains(tag.Id)
+            };
+            checkBox.Checked += (_, _) => ToggleCurrentFileTag(tag.Id, true);
+            checkBox.Unchecked += (_, _) => ToggleCurrentFileTag(tag.Id, false);
+            return checkBox;
+        }
+
+        void AddTagGrid(IReadOnlyList<Tag> tags, double indent)
+        {
+            if (tags.Count == 0) return;
+            var grid = new UniformGrid { Columns = 2, Margin = new Thickness(indent, 0, 0, 0) };
+            foreach (var tag in tags)
+                grid.Children.Add(BuildCheckbox(tag));
+            LeftSidebar.Children.Add(grid);
+        }
+
+        foreach (var major in TagRepository.GetMajorCategories())
+        {
+            var minors = TagRepository.GetMinorCategories(major.Id);
+            if (minors.Count == 0) continue;
+
+            LeftSidebar.Children.Add(new TextBlock
+            {
+                Text = major.Name,
+                Foreground = Theme.TextBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 6, 0, 2)
+            });
+
+            foreach (var minor in minors)
+            {
+                var minorHeaderRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 2, 0, 1) };
+                minorHeaderRow.Children.Add(new TextBlock
+                {
+                    Text = minor.Name,
+                    Foreground = Theme.SubtextBrush,
+                    FontFamily = new FontFamily(Theme.FontFamily),
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                var addTagToMinorBtn = CreateSidebarButton("+", () => QuickAddTagToMinorCategory(minor));
+                addTagToMinorBtn.Padding = new Thickness(6, 0, 6, 0);
+                addTagToMinorBtn.Margin = new Thickness(4, 0, 0, 0);
+                addTagToMinorBtn.ToolTip = $"「{minor.Name}」にタグを追加";
+                minorHeaderRow.Children.Add(addTagToMinorBtn);
+                LeftSidebar.Children.Add(minorHeaderRow);
+
+                AddTagGrid(TagRepository.GetTagsByMinorCategory(minor.Id), 16);
+            }
+        }
+
+        var uncategorized = TagRepository.GetAllTags().Where(t => t.MinorCategoryId == null).ToList();
+        if (uncategorized.Count > 0)
+        {
+            LeftSidebar.Children.Add(new TextBlock
+            {
+                Text = "未分類",
+                Foreground = Theme.TextBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                Margin = new Thickness(0, 6, 0, 2)
+            });
+            AddTagGrid(uncategorized, 8);
+        }
+    }
+
+    /// <summary>1行の入力ダイアログで中カテゴリ配下にタグを即時追加する（タグ管理ダイアログを開かずに済ませる）。</summary>
+    private void QuickAddTagToMinorCategory(MinorCategory minor)
+    {
+        var dlg = new Dialogs.InputDialog("タグ追加", $"「{minor.Name}」に追加するタグ名:") { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
+        var name = dlg.InputText.Trim();
+        if (TagRepository.GetAllTags().Any(t => t.Name == name))
+        {
+            System.Windows.MessageBox.Show($"「{name}」は既に存在します。", "タグ追加");
+            return;
+        }
+
+        var existing = TagRepository.GetTagsByMinorCategory(minor.Id);
+        var sortOrder = existing.Count == 0 ? 0 : existing.Max(t => t.SortOrder) + 1;
+        var id = TagRepository.AddTag(name, minor.Id, sortOrder);
+        if (!string.IsNullOrEmpty(minor.Color))
+            TagRepository.SetTagColor(id, minor.Color);
+
+        RebuildSidebar();
+    }
+
+    private void ToggleCurrentFileTag(long tagId, bool add)
+    {
+        var identity = GetCurrentFileIdentity();
+        if (identity == null) return;
+        var entryId = TagRepository.GetOrCreateFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+        if (add) TagRepository.AddFileTag(entryId, tagId);
+        else TagRepository.RemoveFileTag(entryId, tagId);
+        RebuildSidebar();
     }
 
     private void OpenTagPickerForCurrentFile()
@@ -1476,8 +1660,12 @@ public partial class MainWindow : Window
         var entryId = TagRepository.GetOrCreateFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
         var current = TagRepository.GetTagsForFile(entryId).Select(t => t.Id).ToHashSet();
 
-        var dlg = new Dialogs.TagPickerDialog(current) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
+        var dlg = new Dialogs.TagPickerDialog(current, initialWidth: _tagPickerDialogWidth, initialHeight: _tagPickerDialogHeight) { Owner = this };
+        var result = dlg.ShowDialog();
+        _tagPickerDialogWidth = dlg.Width;
+        _tagPickerDialogHeight = dlg.Height;
+        SaveStateOnly();
+        if (result != true) return;
 
         foreach (var id in dlg.SelectedTagIds.Except(current))
             TagRepository.AddFileTag(entryId, id);
@@ -1487,15 +1675,6 @@ public partial class MainWindow : Window
         RebuildSidebar();
     }
 
-    private void RemoveTagFromCurrentFile(long tagId)
-    {
-        var identity = GetCurrentFileIdentity();
-        if (identity == null) return;
-        var entry = TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
-        if (entry == null) return;
-        TagRepository.RemoveFileTag(entry.Id, tagId);
-        RebuildSidebar();
-    }
 
     // ======== RATING (昇降格) SIDEBAR ========
 
@@ -2677,6 +2856,20 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>現在開いているファイルをエクスプローラーで選択状態にして開く。</summary>
+    private void OpenCurrentFileLocationInExplorer()
+    {
+        if (_archivePath == null) return;
+        try
+        {
+            Process.Start("explorer.exe", $"/select,\"{_archivePath}\"");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"エクスプローラーを開けませんでした: {ex.Message}");
+        }
+    }
+
     // ======== OPEN / LOAD ========
 
     private void BtnOpen_Click(object sender, RoutedEventArgs e)
@@ -2758,11 +2951,7 @@ public partial class MainWindow : Window
 
         EmptyMessage.Visibility = Visibility.Collapsed;
         ProgressOverlay.Visibility = Visibility.Visible;
-        if (!keepViewer)
-        {
-            ViewerOverlay.Visibility = Visibility.Collapsed;
-            _viewerOpen = false;
-        }
+        if (!keepViewer) CloseViewer();
         ThumbnailGrid.Children.Clear();
         _cards.Clear();
 
@@ -4854,6 +5043,10 @@ public partial class MainWindow : Window
         {
             ZoomThumbnails(e.Delta > 0 ? 1 : -1);
             e.Handled = true;
+        }
+        else if (_mode == "tag" && RightSidebar.IsVisible && TagFileListPanel.IsMouseOver)
+        {
+            // ファイル一覧上ではリスト自身のスクロールに任せる（ビューアーのナビゲーション等に奪われないように）
         }
         else if (_viewerOpen)
         {

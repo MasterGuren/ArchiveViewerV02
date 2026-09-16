@@ -42,6 +42,10 @@ public partial class TagManagerDialog : Window
         return new ListBoxItem { Content = panel, Tag = tag };
     }
 
+    /// <summary>新規追加時に末尾（既存の最大SortOrder+1）へ入るようにする。</summary>
+    private static int NextSortOrder<T>(IReadOnlyCollection<T> items, Func<T, int> selector) =>
+        items.Count == 0 ? 0 : items.Max(selector) + 1;
+
     private void RefreshMajor(long? selectId = null)
     {
         var list = TagRepository.GetMajorCategories();
@@ -109,13 +113,37 @@ public partial class TagManagerDialog : Window
         var dlg = new InputDialog("大カテゴリ追加", "カテゴリ名:") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
-        if (TagRepository.GetMajorCategories().Any(c => c.Name == name))
+        var existing = TagRepository.GetMajorCategories();
+        if (existing.Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "大カテゴリ追加");
             return;
         }
-        var id = TagRepository.AddMajorCategory(name);
+        var id = TagRepository.AddMajorCategory(name, NextSortOrder(existing, c => c.SortOrder));
         RefreshMajor(id);
+    }
+
+    /// <summary>Enterのたびに即追加してテキストボックスをクリア。ダイアログを挟まず連続入力できるようにする。</summary>
+    private void TxtQuickAddMajor_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+
+        var name = TxtQuickAddMajor.Text.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        var existing = TagRepository.GetMajorCategories();
+        if (existing.Any(c => c.Name == name))
+        {
+            MessageBox.Show($"「{name}」は既に存在します。", "大カテゴリ追加");
+            return;
+        }
+
+        var keepSelected = SelectedMajor?.Id;
+        TagRepository.AddMajorCategory(name, NextSortOrder(existing, c => c.SortOrder));
+        TxtQuickAddMajor.Clear();
+        RefreshMajor(keepSelected);
+        TxtQuickAddMajor.Focus();
     }
 
     private void BtnRenameMajor_Click(object sender, RoutedEventArgs e)
@@ -168,13 +196,49 @@ public partial class TagManagerDialog : Window
         var dlg = new InputDialog("中カテゴリ追加", "カテゴリ名:") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
-        if (TagRepository.GetMinorCategories(major.Id).Any(c => c.Name == name))
+        var existing = TagRepository.GetMinorCategories(major.Id);
+        if (existing.Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "中カテゴリ追加");
             return;
         }
-        var id = TagRepository.AddMinorCategory(major.Id, name);
+        var id = TagRepository.AddMinorCategory(major.Id, name, NextSortOrder(existing, c => c.SortOrder));
+        if (!string.IsNullOrEmpty(major.Color))
+            TagRepository.SetMinorCategoryColor(id, major.Color);
         RefreshMinor(id);
+    }
+
+    /// <summary>Enterのたびに即追加してテキストボックスをクリア。ダイアログを挟まず連続入力できるようにする。</summary>
+    private void TxtQuickAddMinor_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+
+        var major = SelectedMajor;
+        if (major == null)
+        {
+            MessageBox.Show("先に大カテゴリを選択してください。", "中カテゴリ追加");
+            return;
+        }
+
+        var name = TxtQuickAddMinor.Text.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        var existing = TagRepository.GetMinorCategories(major.Id);
+        if (existing.Any(c => c.Name == name))
+        {
+            MessageBox.Show($"「{name}」は既に存在します。", "中カテゴリ追加");
+            return;
+        }
+
+        var keepSelected = SelectedMinor?.Id;
+        var id = TagRepository.AddMinorCategory(major.Id, name, NextSortOrder(existing, c => c.SortOrder));
+        if (!string.IsNullOrEmpty(major.Color))
+            TagRepository.SetMinorCategoryColor(id, major.Color);
+
+        TxtQuickAddMinor.Clear();
+        RefreshMinor(keepSelected);
+        TxtQuickAddMinor.Focus();
     }
 
     private void BtnRenameMinor_Click(object sender, RoutedEventArgs e)
@@ -240,8 +304,43 @@ public partial class TagManagerDialog : Window
             MessageBox.Show($"「{name}」は既に存在します。", "タグ追加");
             return;
         }
-        var id = TagRepository.AddTag(name, minor.Id);
+        var existing = TagRepository.GetTagsByMinorCategory(minor.Id);
+        var id = TagRepository.AddTag(name, minor.Id, NextSortOrder(existing, t => t.SortOrder));
+        if (!string.IsNullOrEmpty(minor.Color))
+            TagRepository.SetTagColor(id, minor.Color);
         RefreshTags(id);
+    }
+
+    /// <summary>Enterのたびに即追加してテキストボックスをクリア。ダイアログを挟まず連続入力できるようにする。</summary>
+    private void TxtQuickAddTag_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+
+        var minor = SelectedMinor;
+        if (minor == null)
+        {
+            MessageBox.Show("先に中カテゴリを選択してください。", "タグ追加");
+            return;
+        }
+
+        var name = TxtQuickAddTag.Text.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+
+        if (TagRepository.GetAllTags().Any(t => t.Name == name))
+        {
+            MessageBox.Show($"「{name}」は既に存在します。", "タグ追加");
+            return;
+        }
+
+        var existing = TagRepository.GetTagsByMinorCategory(minor.Id);
+        var id = TagRepository.AddTag(name, minor.Id, NextSortOrder(existing, t => t.SortOrder));
+        if (!string.IsNullOrEmpty(minor.Color))
+            TagRepository.SetTagColor(id, minor.Color);
+
+        TxtQuickAddTag.Clear();
+        RefreshTags();
+        TxtQuickAddTag.Focus();
     }
 
     private void BtnRenameTag_Click(object sender, RoutedEventArgs e)
