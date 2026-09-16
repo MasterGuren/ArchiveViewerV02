@@ -73,20 +73,29 @@ public static class Theme
     public static readonly SolidColorBrush RangeSelectBrush = new(RangeSelectColor);
     public static readonly SolidColorBrush TransparentBrush = Brushes.Transparent;
 
-    // Action color palette
-    public static readonly string[] ColorChoices =
+    // 系統分けせず、誰でも見分けがつく「有名な色」を60色フラットに並べる。
+    public static readonly (string Name, string Hex)[] NamedColors =
     [
-        // Primary / vivid
-        "#FF0000", "#FF4500", "#FF8C00", "#FFD700",
-        "#00FF00", "#00CED1", "#0000FF", "#8B00FF",
-        "#FF00FF", "#FF1493",
-        // Tailwind tones
-        "#ef4444", "#f97316", "#f59e0b", "#eab308",
-        "#22c55e", "#14b8a6", "#3b82f6", "#6366f1",
-        "#a855f7", "#ec4899",
-        // Dark / muted
-        "#7f1d1d", "#64748b", "#1e3a5f", "#2d1b69"
+        ("赤", "#FF0000"), ("緋色", "#DC143C"), ("えんじ色", "#800000"), ("サーモンピンク", "#FA8072"),
+        ("ピンク", "#FFC0CB"), ("ホットピンク", "#FF69B4"), ("マゼンタ", "#FF00FF"), ("ローズ", "#DB7093"),
+        ("オレンジ", "#FFA500"), ("ダークオレンジ", "#FF8C00"), ("コーラル", "#FF7F50"), ("トマト", "#FF6347"),
+        ("茶色", "#A52A2A"), ("チョコレート", "#D2691E"), ("サドルブラウン", "#8B4513"),
+        ("黄色", "#FFFF00"), ("金色", "#FFD700"), ("カーキ", "#F0E68C"), ("マスタード", "#BDB76B"),
+        ("レモン", "#FFFACD"), ("山吹色", "#FBC02D"),
+        ("緑", "#008000"), ("ライム", "#00FF00"), ("フォレストグリーン", "#228B22"), ("オリーブ", "#808000"),
+        ("シーグリーン", "#2E8B57"), ("エメラルド", "#3CB371"), ("ミントグリーン", "#98FF98"), ("シャルトリューズ", "#7FFF00"),
+        ("シアン", "#00FFFF"), ("ターコイズ", "#40E0D0"), ("ティール", "#008080"), ("水色", "#87CEEB"),
+        ("青", "#0000FF"), ("ロイヤルブルー", "#4169E1"), ("紺色", "#000080"), ("スチールブルー", "#4682B4"),
+        ("コーンフラワーブルー", "#6495ED"), ("ミッドナイトブルー", "#191970"),
+        ("紫", "#800080"), ("藍色", "#4B0082"), ("すみれ色", "#EE82EE"), ("ラベンダー", "#E6E6FA"),
+        ("オーキッド", "#DA70D6"), ("プラム", "#DDA0DD"), ("アメジスト", "#9966CC"), ("スレートブルー", "#6A5ACD"),
+        ("黒", "#000000"), ("白", "#FFFFFF"), ("灰色", "#808080"), ("銀色", "#C0C0C0"),
+        ("薄灰色", "#D3D3D3"), ("濃灰色", "#A9A9A9"), ("ベージュ", "#F5F5DC"), ("アイボリー", "#FFFFF0"),
+        ("クリーム色", "#FFF8DC"), ("桜色", "#FFE4E1"), ("パウダーブルー", "#B0E0E6"), ("モスグリーン", "#556B2F"),
+        ("れんが色", "#B22222"),
     ];
+
+    public static readonly string[] ColorChoices = [.. NamedColors.Select(c => c.Hex)];
 
     // Thumbnail sizes
     public const int ThumbSizeDefault = 480;

@@ -24,6 +24,12 @@ public partial class MainWindow : Window
     // --- State ---
     private AppConfig _config = null!;
     private string _mode = "browse";
+    private string _tagDbMode = "demo";
+    private List<string> _tagSourceFolders = [];
+    private List<string> _tagDisabledFolders = [];
+    private List<string> _tagFileList = [];
+    private int _tagFileIndex = -1;
+    private List<long> _tagSearchTagIds = [];
 
     // Archive state
     private string? _archivePath;
@@ -135,6 +141,8 @@ public partial class MainWindow : Window
         UpdateOrientButtons();
         UpdateVideoEndActionButtons();
         UpdateVideoScrollButtons();
+        TagDatabaseService.SetMode(_tagDbMode == "production" ? TagDbMode.Production : TagDbMode.Demo);
+        UpdateTagDbModeButton();
 
     }
 
@@ -151,6 +159,9 @@ public partial class MainWindow : Window
         _thumbSize = _config.State.ThumbSize > 0 ? _config.State.ThumbSize : Theme.ThumbSizeDefault;
         _videoScrollAmount = !string.IsNullOrEmpty(_config.State.VideoScrollAmount) ? _config.State.VideoScrollAmount : "30";
         _imageScaleMode = !string.IsNullOrEmpty(_config.State.ImageScaleMode) ? _config.State.ImageScaleMode : "Default";
+        _tagDbMode = string.IsNullOrEmpty(_config.State.TagDbMode) ? "demo" : _config.State.TagDbMode;
+        _tagSourceFolders = _config.State.TagSourceFolders ?? [];
+        _tagDisabledFolders = _config.State.TagDisabledFolders ?? [];
 
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
         _imagePresets = _config.ImagePresets;
@@ -215,6 +226,9 @@ public partial class MainWindow : Window
         _config.State.VideoRatingPresetOrder = [.. _videoRatingPresets.Keys];
         _config.State.VideoRatingJudgmentLevel = _videoRatingJudgmentLevel;
         _config.State.Theme = Theme.CurrentThemeName;
+        _config.State.TagDbMode = _tagDbMode;
+        _config.State.TagSourceFolders = _tagSourceFolders;
+        _config.State.TagDisabledFolders = _tagDisabledFolders;
     }
 
     /// <summary>
@@ -297,13 +311,17 @@ public partial class MainWindow : Window
         BtnVideo.IsChecked = mode == "video";
         BtnImage.IsChecked = mode == "image";
         BtnRating.IsChecked = mode == "rating";
+        BtnTag.IsChecked = mode == "tag";
 
         // Show/hide extract UI
         bool isExtract = mode == "extract";
+        bool isTag = mode == "tag";
         BtnExtractRange.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
         BtnClearSelection.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
-        RightSidebarCol.Width = isExtract ? new GridLength(300) : new GridLength(0);
-        RightSidebar.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
+        RightSidebarCol.Width = (isExtract || isTag) ? new GridLength(300) : new GridLength(0);
+        RightSidebar.Visibility = (isExtract || isTag) ? Visibility.Visible : Visibility.Collapsed;
+        ExtractRightSidebarContent.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
+        TagRightSidebarContent.Visibility = isTag ? Visibility.Visible : Visibility.Collapsed;
 
         // Show/hide video — モード切替時に動画を閉じる
         bool isVideo = mode == "video";
@@ -367,6 +385,7 @@ public partial class MainWindow : Window
     private void BtnVideo_Click(object sender, RoutedEventArgs e) => SwitchMode("video");
     private void BtnImage_Click(object sender, RoutedEventArgs e) => SwitchMode("image");
     private void BtnRating_Click(object sender, RoutedEventArgs e) => SwitchMode("rating");
+    private void BtnTag_Click(object sender, RoutedEventArgs e) => SwitchMode("tag");
 
     // ======== SIDEBAR ========
 
@@ -393,6 +412,9 @@ public partial class MainWindow : Window
             case "rating":
                 BuildRatingSidebar();
                 break;
+            case "tag":
+                BuildTagSidebar();
+                break;
         }
 
         // Thumbnail size selector (image-related modes only)
@@ -406,9 +428,51 @@ public partial class MainWindow : Window
         AddSidebarSeparator();
         BuildThemeSelector();
 
+        // Tag manager (common to all modes)
+        AddSidebarSeparator();
+        var tagManagerBtn = CreateSidebarButton("🏷 タグ管理", () =>
+        {
+            var dlg = new ArchiveViewer.Dialogs.TagManagerDialog { Owner = this };
+            dlg.ShowDialog();
+        });
+        tagManagerBtn.Margin = new Thickness(0, 4, 0, 4);
+        LeftSidebar.Children.Add(tagManagerBtn);
+
         // Restore scroll position after layout completes
         Dispatcher.InvokeAsync(() => SidebarScroller.ScrollToVerticalOffset(scrollPos),
             System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void BtnTagDbMode_Click(object sender, RoutedEventArgs e)
+    {
+        var switchingToProduction = TagDatabaseService.CurrentMode == TagDbMode.Demo;
+        if (switchingToProduction)
+        {
+            if (MessageBox.Show("本番タグDBに切り替えます。実データを扱いますがよろしいですか？", "タグDB切り替え",
+                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+        }
+
+        var newMode = switchingToProduction ? TagDbMode.Production : TagDbMode.Demo;
+        TagDatabaseService.SetMode(newMode);
+        _tagDbMode = newMode == TagDbMode.Production ? "production" : "demo";
+        SaveStateOnly();
+        UpdateTagDbModeButton();
+    }
+
+    private void UpdateTagDbModeButton()
+    {
+        if (TagDatabaseService.CurrentMode == TagDbMode.Production)
+        {
+            BtnTagDbMode.Content = "⚠ タグDB: 本番";
+            BtnTagDbMode.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#ef4444")!);
+        }
+        else
+        {
+            BtnTagDbMode.Content = "🧪 タグDB: デモ";
+            BtnTagDbMode.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22c55e")!);
+        }
+        BtnTagDbMode.Foreground = ContrastForeground(BtnTagDbMode.Background);
     }
 
     private void BuildThumbSizeSelector()
@@ -650,6 +714,787 @@ public partial class MainWindow : Window
 
         AddSidebarSeparator();
         BuildTrashDisplay(_imageTrashFolder);
+    }
+
+    // ======== TAG SIDEBAR ========
+
+    private void BuildTagSidebar()
+    {
+        // Working folder
+        if (_archivePath != null)
+        {
+            AddSidebarLabel("作業フォルダ");
+            AddSidebarText(Path.GetDirectoryName(_archivePath) ?? "");
+            AddSidebarSeparator();
+
+            AddSidebarLabel("作品名");
+            var titleBox = new System.Windows.Controls.TextBox
+            {
+                Text = GetCurrentWorkTitle() ?? "",
+                Background = Theme.PanelBrush,
+                Foreground = Theme.TextBrush,
+                CaretBrush = Theme.TextBrush,
+                BorderBrush = Theme.BorderBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = 13,
+                Padding = new Thickness(4)
+            };
+            titleBox.LostFocus += (_, _) => SaveWorkTitleFromText(titleBox.Text);
+            titleBox.KeyDown += (_, e) =>
+            {
+                if (e.Key != Key.Enter) return;
+                SaveWorkTitleFromText(titleBox.Text);
+                System.Windows.Input.Keyboard.ClearFocus();
+            };
+            LeftSidebar.Children.Add(titleBox);
+            AddSidebarSeparator();
+
+            AddSidebarLabel("タグ");
+            foreach (var tag in GetCurrentFileTags())
+                LeftSidebar.Children.Add(BuildTagChipRow(tag));
+
+            var addTagBtn = CreateSidebarButton("+ タグを追加", () => OpenTagPickerForCurrentFile());
+            addTagBtn.Margin = new Thickness(0, 4, 0, 0);
+            LeftSidebar.Children.Add(addTagBtn);
+
+            AddSidebarSeparator();
+
+            var deleteBtn = CreateSidebarButton("🗑 ゴミ箱へ移動", () => DeleteCurrentFileToRecycleBin(), "#7f1d1d");
+            LeftSidebar.Children.Add(deleteBtn);
+
+            AddSidebarSeparator();
+        }
+
+        var addBtn = CreateSidebarButton("📂 フォルダを追加", () => AddTagSourceFolder());
+        addBtn.Margin = new Thickness(0, 4, 0, 4);
+        LeftSidebar.Children.Add(addBtn);
+
+        AddSidebarSeparator();
+
+        // Source folders — チェックで有効/無効を切り替え、再帰的に対象フォルダとして扱う
+        AddSidebarLabel("ソースフォルダ");
+
+        if (_tagSourceFolders.Count > 0)
+        {
+            var toggleAllRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            var enableAllBtn = CreateSidebarButton("すべて有効", () =>
+            {
+                _tagDisabledFolders.Clear();
+                SaveStateOnly();
+                RebuildSidebar();
+            });
+            enableAllBtn.Padding = new Thickness(6, 2, 6, 2);
+            toggleAllRow.Children.Add(enableAllBtn);
+
+            var disableAllBtn = CreateSidebarButton("すべて無効", () =>
+            {
+                _tagDisabledFolders = [.. _tagSourceFolders];
+                SaveStateOnly();
+                RebuildSidebar();
+            });
+            disableAllBtn.Padding = new Thickness(6, 2, 6, 2);
+            disableAllBtn.Margin = new Thickness(4, 0, 0, 0);
+            toggleAllRow.Children.Add(disableAllBtn);
+
+            LeftSidebar.Children.Add(toggleAllRow);
+        }
+
+        foreach (var folder in _tagSourceFolders)
+        {
+            var f = folder;
+            var block = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+
+            var cb = new System.Windows.Controls.CheckBox
+            {
+                Content = new TextBlock
+                {
+                    Text = f,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = Theme.TextBrush,
+                    FontFamily = new FontFamily(Theme.FontFamily),
+                    FontSize = 13
+                },
+                ToolTip = f,
+                IsChecked = !_tagDisabledFolders.Contains(f)
+            };
+            cb.Checked += (_, _) => { _tagDisabledFolders.Remove(f); SaveStateOnly(); };
+            cb.Unchecked += (_, _) => { if (!_tagDisabledFolders.Contains(f)) _tagDisabledFolders.Add(f); SaveStateOnly(); };
+            block.Children.Add(cb);
+
+            var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 2, 0, 0) };
+
+            var openInExplorerBtn = CreateSidebarButton("📂", () => OpenFolderInExplorer(f));
+            openInExplorerBtn.Padding = new Thickness(6, 0, 6, 0);
+            openInExplorerBtn.ToolTip = "エクスプローラーで開く";
+            btnRow.Children.Add(openInExplorerBtn);
+
+            var moveUpBtn = CreateSidebarButton("▲", () => MoveTagSourceFolder(f, -1));
+            moveUpBtn.Padding = new Thickness(6, 0, 6, 0);
+            moveUpBtn.Margin = new Thickness(2, 0, 0, 0);
+            btnRow.Children.Add(moveUpBtn);
+
+            var moveDownBtn = CreateSidebarButton("▼", () => MoveTagSourceFolder(f, 1));
+            moveDownBtn.Padding = new Thickness(6, 0, 6, 0);
+            moveDownBtn.Margin = new Thickness(2, 0, 0, 0);
+            btnRow.Children.Add(moveDownBtn);
+
+            var removeBtn = CreateSidebarButton("×", () =>
+            {
+                _tagSourceFolders.Remove(f);
+                _tagDisabledFolders.Remove(f);
+                SaveStateOnly();
+                RebuildSidebar();
+            });
+            removeBtn.Padding = new Thickness(6, 0, 6, 0);
+            removeBtn.Margin = new Thickness(2, 0, 0, 0);
+            btnRow.Children.Add(removeBtn);
+
+            block.Children.Add(btnRow);
+            LeftSidebar.Children.Add(block);
+        }
+
+        var randomBtn = CreateSidebarButton("🎲 有効フォルダからランダム", () => OpenRandomFromActiveTagFolders());
+        randomBtn.Margin = new Thickness(0, 8, 0, 0);
+        LeftSidebar.Children.Add(randomBtn);
+
+        RebuildTagSearchChips();
+        RebuildTagFileListPanel();
+    }
+
+    private void RebuildTagSearchChips()
+    {
+        TagSearchChipsPanel.Children.Clear();
+        if (_tagSearchTagIds.Count == 0)
+        {
+            TagSearchChipsPanel.Children.Add(new TextBlock
+            {
+                Text = "(すべて)",
+                Foreground = Theme.SubtextBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = 12
+            });
+            return;
+        }
+
+        var allTags = TagRepository.GetAllTags().ToDictionary(t => t.Id);
+        foreach (var tagId in _tagSearchTagIds)
+        {
+            if (!allTags.TryGetValue(tagId, out var tag)) continue;
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+            var bgBrush = string.IsNullOrEmpty(tag.Color) ? Theme.PanelBrush : new SolidColorBrush((Color)ColorConverter.ConvertFromString(tag.Color)!);
+            var fgBrush = ContrastForeground(bgBrush);
+            var pill = new Border
+            {
+                Background = bgBrush,
+                BorderBrush = Theme.BorderBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(8, 2, 8, 2),
+                Child = new TextBlock { Text = tag.Name, Foreground = fgBrush, FontFamily = new FontFamily(Theme.FontFamily), FontSize = 12 }
+            };
+            row.Children.Add(pill);
+
+            var id = tagId;
+            var removeBtn = CreateSidebarButton("×", () =>
+            {
+                _tagSearchTagIds.Remove(id);
+                RebuildTagSearchChips();
+            });
+            removeBtn.Margin = new Thickness(4, 0, 0, 0);
+            removeBtn.Padding = new Thickness(4, 0, 4, 0);
+            row.Children.Add(removeBtn);
+
+            TagSearchChipsPanel.Children.Add(row);
+        }
+    }
+
+    private void BtnTagSearchPickTags_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new TagPickerDialog(_tagSearchTagIds, enforceRequiredCategories: false) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        _tagSearchTagIds = [.. dlg.SelectedTagIds];
+        RebuildTagSearchChips();
+    }
+
+    private void TxtTagSearchText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) ExecuteTagSearch();
+    }
+
+    private void BtnExecuteTagSearch_Click(object sender, RoutedEventArgs e) => ExecuteTagSearch();
+
+    /// <summary>「未設定」「設定済み」チェックボックスは同時に2つとも意味を持たないので、片方を付けたら他方を外す。</summary>
+    private void TagFilterCheckbox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender == ChkSearchNoTags && ChkSearchNoTags.IsChecked == true) ChkSearchHasTags.IsChecked = false;
+        else if (sender == ChkSearchHasTags && ChkSearchHasTags.IsChecked == true) ChkSearchNoTags.IsChecked = false;
+        else if (sender == ChkSearchNoTitle && ChkSearchNoTitle.IsChecked == true) ChkSearchHasTitle.IsChecked = false;
+        else if (sender == ChkSearchHasTitle && ChkSearchHasTitle.IsChecked == true) ChkSearchNoTitle.IsChecked = false;
+    }
+
+    // リスト作成・検索・並べ替えの非同期処理を、直前の実行と差し替える時にキャンセルするためのトークン
+    private CancellationTokenSource? _tagListCts;
+
+    /// <summary>
+    /// 有効フォルダ内の候補ファイルを、現在のタグ検索条件（_tagSearchTagIds＋AND/OR）、
+    /// タグ/作品名の設定有無、文字列（ファイル名／作品名）で絞り込む。ソート変更・ランダム選択からも共通で使う。
+    /// フォルダ走査・DB照合はバックグラウンドスレッドで行い、UIをブロックしない。
+    /// 列挙時に取得したサイズ・更新日時をそのまま使い回すので、大量件数でもファイルへの再アクセスをしない。
+    /// </summary>
+    private async Task<List<string>> ComputeTagSearchResultsAsync(CancellationToken ct)
+    {
+        var candidates = await BuildTagFileEntriesAsync(ct);
+        var text = TxtTagSearchText.Text.Trim();
+        var requireNoTags = ChkSearchNoTags.IsChecked == true;
+        var requireHasTags = ChkSearchHasTags.IsChecked == true;
+        var requireNoTitle = ChkSearchNoTitle.IsChecked == true;
+        var requireHasTitle = ChkSearchHasTitle.IsChecked == true;
+
+        if (_tagSearchTagIds.Count == 0 && string.IsNullOrEmpty(text) &&
+            !requireNoTags && !requireHasTags && !requireNoTitle && !requireHasTitle)
+            return [.. candidates.Select(c => c.Path)];
+
+        var matchAll = RbTagSearchAnd.IsChecked == true;
+        var tagIds = _tagSearchTagIds;
+
+        return await Task.Run(() =>
+        {
+            // 作品名参照用に全FileEntriesを取得。タグ未設定/設定済み判定用に「タグが1つでもある」集合も取得。
+            var allEntries = TagRepository.GetFileEntriesMatchingTags([], false);
+            var anyTagSet = (requireNoTags || requireHasTags) ? TagRepository.GetFileEntriesWithAnyTag() : null;
+            var tagMatchSet = (tagIds.Count > 0 && !requireNoTags)
+                ? (HashSet<(string, long, long)>?)[.. TagRepository.GetFileEntriesMatchingTags(tagIds, matchAll).Keys]
+                : null;
+
+            var results = new List<string>();
+            foreach (var entry in candidates)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var key = (entry.Path, entry.Size, entry.Ticks);
+                allEntries.TryGetValue(key, out var workTitle);
+
+                if (requireNoTags && anyTagSet!.Contains(key)) continue;
+                if (requireHasTags && !anyTagSet!.Contains(key)) continue;
+                if (tagMatchSet != null && !tagMatchSet.Contains(key)) continue;
+
+                bool hasTitle = !string.IsNullOrEmpty(workTitle);
+                if (requireNoTitle && hasTitle) continue;
+                if (requireHasTitle && !hasTitle) continue;
+
+                if (!string.IsNullOrEmpty(text))
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(entry.Path);
+                    bool nameMatch = fileName.Contains(text, StringComparison.OrdinalIgnoreCase);
+                    bool titleMatch = hasTitle && workTitle!.Contains(text, StringComparison.OrdinalIgnoreCase);
+                    if (!nameMatch && !titleMatch) continue;
+                }
+
+                results.Add(entry.Path);
+            }
+            return results;
+        }, ct);
+    }
+
+    private async void ExecuteTagSearch()
+    {
+        _tagListCts?.Cancel();
+        _tagListCts = new CancellationTokenSource();
+        var ct = _tagListCts.Token;
+
+        TxtTagFileListHeader.Text = "検索中...";
+        SetStatus("検索しています...");
+
+        List<string> results;
+        try
+        {
+            results = await ComputeTagSearchResultsAsync(ct);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { SetStatus($"エラー: {ex.Message}"); return; }
+        if (ct.IsCancellationRequested) return;
+
+        _tagFileList = results;
+
+        if (_tagFileList.Count > 0)
+        {
+            _folderRoot = null;
+            _tagFileIndex = 0;
+            LoadArchive(_tagFileList[0]);
+        }
+        else
+        {
+            SetStatus("検索結果が見つかりません");
+            _tagFileIndex = -1;
+            _archivePath = null;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            EmptyMessage.Visibility = Visibility.Visible;
+            RebuildSidebar();
+        }
+    }
+
+    /// <summary>ソート条件変更時、現在の検索条件を保ったまま_tagFileListを作り直す。</summary>
+    private async void RebuildTagFileListForSort(bool forceReshuffle)
+    {
+        _tagListCts?.Cancel();
+        _tagListCts = new CancellationTokenSource();
+        var ct = _tagListCts.Token;
+
+        var currentPath = _tagFileIndex >= 0 && _tagFileIndex < _tagFileList.Count ? _tagFileList[_tagFileIndex] : null;
+        TxtTagFileListHeader.Text = "並べ替え中...";
+
+        List<string> results;
+        try
+        {
+            results = await ComputeTagSearchResultsAsync(ct);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { SetStatus($"エラー: {ex.Message}"); return; }
+        if (ct.IsCancellationRequested) return;
+
+        _tagFileList = results;
+
+        if (forceReshuffle && _tagFileList.Count > 0)
+        {
+            _tagFileIndex = 0;
+            LoadArchive(_tagFileList[0]);
+        }
+        else
+        {
+            var idx = currentPath != null ? _tagFileList.IndexOf(currentPath) : -1;
+            _tagFileIndex = idx >= 0 ? idx : (_tagFileList.Count > 0 ? 0 : -1);
+            UpdateNavigation();
+            RebuildSidebar();
+        }
+    }
+
+    // _tagFileList の参照が変わっていなければ、パネルは既にそのリストの内容を反映している
+    private List<string>? _tagFileListPanelBuiltFor;
+    private bool _suppressTagFileListSelection;
+
+    private sealed record TagChipViewModel(string Name, System.Windows.Media.Brush Background, System.Windows.Media.Brush Foreground);
+
+    private sealed record TagFileListItem(string Path)
+    {
+        public string FileName => System.IO.Path.GetFileName(Path);
+
+        /// <summary>
+        /// 表示される行だけがバインディング評価時にDBを引くので（ListBoxの仮想化任せ）、
+        /// 全件事前計算はしない。編集直後も常に最新のタグを反映する。
+        /// </summary>
+        public List<TagChipViewModel> Tags
+        {
+            get
+            {
+                var identity = GetFileIdentity(Path);
+                if (identity == null) return [];
+                var entry = TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+                if (entry == null) return [];
+
+                return [.. TagRepository.GetTagsForFile(entry.Id).Select(t =>
+                {
+                    System.Windows.Media.Brush bg = string.IsNullOrEmpty(t.Color)
+                        ? Theme.PanelBrush
+                        : new SolidColorBrush((Color)ColorConverter.ConvertFromString(t.Color)!);
+                    return new TagChipViewModel(t.Name, bg, ContrastForeground(bg));
+                })];
+            }
+        }
+    }
+
+    /// <summary>
+    /// 右サイドバーに現在の_tagFileList（ランダム選択・ソート変更・検索結果などで作られたファイル一覧）を表示する。
+    /// ListBoxのUI仮想化（表示領域に映っている行だけ実体化）を使うので、数万件でも全件そのまま渡せる。
+    /// クリックで直接そのファイルへジャンプできる。
+    /// </summary>
+    private void RebuildTagFileListPanel()
+    {
+        if (!ReferenceEquals(_tagFileListPanelBuiltFor, _tagFileList))
+        {
+            var panelSw = System.Diagnostics.Stopwatch.StartNew();
+            _suppressTagFileListSelection = true;
+            TagFileListPanel.ItemsSource = _tagFileList.Select(p => new TagFileListItem(p)).ToList();
+            _tagFileListPanelBuiltFor = _tagFileList;
+            _suppressTagFileListSelection = false;
+            TagScanLog($"[TagScan] 右サイドバー一覧の描画完了（{_tagFileList.Count:N0}件, 経過{panelSw.Elapsed.TotalSeconds:F1}秒）");
+        }
+
+        TxtTagFileListHeader.Text = _tagFileList.Count > 0 ? $"ファイル一覧（{_tagFileList.Count:N0}件）" : "ファイル一覧";
+
+        _suppressTagFileListSelection = true;
+        TagFileListPanel.SelectedIndex = _tagFileIndex;
+        if (_tagFileIndex >= 0 && _tagFileIndex < TagFileListPanel.Items.Count)
+            TagFileListPanel.ScrollIntoView(TagFileListPanel.Items[_tagFileIndex]);
+        _suppressTagFileListSelection = false;
+    }
+
+    private void TagFileListPanel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressTagFileListSelection) return;
+        var idx = TagFileListPanel.SelectedIndex;
+        if (idx < 0 || idx >= _tagFileList.Count || idx == _tagFileIndex) return;
+
+        _tagFileIndex = idx;
+        LoadArchive(_tagFileList[idx], keepViewer: _viewerOpen);
+    }
+
+    /// <summary>
+    /// チェックが入っている（無効リストに無い）タグモードのソースフォルダを重複・親子関係を除去した上で返す。
+    /// 同じフォルダを2つ登録した場合や、親フォルダとそのサブフォルダを両方チェックした場合に
+    /// 同じファイルを何度もスキャンしてしまう（重い・遅い）のを防ぐ。
+    /// </summary>
+    private List<string> GetActiveTagFolders()
+    {
+        var normalized = _tagSourceFolders
+            .Where(f => !_tagDisabledFolders.Contains(f))
+            .Select(f => { try { return Path.GetFullPath(f).TrimEnd('\\', '/'); } catch { return null; } })
+            .Where(f => f != null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var result = new List<string>();
+        foreach (var folder in normalized)
+        {
+            bool coveredByAnother = normalized.Any(other =>
+                !string.Equals(other, folder, StringComparison.OrdinalIgnoreCase) &&
+                folder!.StartsWith(other + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+            if (!coveredByAnother) result.Add(folder!);
+        }
+        return result;
+    }
+
+    /// <summary>ファイル列挙時に読んだサイズ・更新日時・作成日時を保持し、後段で再アクセスしないようにする。</summary>
+    private readonly record struct TagFileEntry(string Path, long Size, long Ticks, DateTime Created);
+
+    // デバッグ用ログファイル。Debug.WriteLineはデバッガー未接続だと見えないため、ファイルに書き出す。
+    private static readonly string TagScanLogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".archive_viewer_v2_tagscan.log");
+
+    private static void TagScanLog(string message)
+    {
+        try
+        {
+            File.AppendAllText(TagScanLogPath, $"{DateTime.Now:HH:mm:ss.fff} {message}\n");
+        }
+        catch { }
+    }
+
+    private async Task<List<TagFileEntry>> BuildTagFileEntriesAsync(CancellationToken ct)
+    {
+        var folders = GetActiveTagFolders();
+        var sort = _folderSort;
+        var sortDir = _folderSortDir;
+
+        var entries = await Task.Run(async () =>
+        {
+            var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+            var list = new List<TagFileEntry>();
+            int scanned = 0;
+            int folderIdx = 0;
+            string currentFolder = "";
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            // メインループが単発の重いI/O（応答の無いネットワークドライブ等）で止まっていても、
+            // 10秒ごとに「今どこにいるか」を出す独立したハートビート。
+            using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var heartbeatTask = Task.Run(async () =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        await Task.Delay(10000, heartbeatCts.Token);
+                        TagScanLog(
+                            $"[TagScan] 経過{stopwatch.Elapsed.TotalSeconds:F0}秒 現在: フォルダ{folderIdx}/{folders.Count} \"{currentFolder}\" {scanned:N0}件走査済み / {list.Count:N0}件該当");
+                    }
+                }
+                catch (OperationCanceledException) { }
+            }, heartbeatCts.Token);
+
+            try
+            {
+                foreach (var folder in folders)
+                {
+                    folderIdx++;
+                    currentFolder = folder;
+                    ct.ThrowIfCancellationRequested();
+                    TagScanLog($"[TagScan] フォルダ{folderIdx}/{folders.Count}開始: {folder}");
+
+                    if (!Directory.Exists(folder))
+                    {
+                        TagScanLog($"[TagScan] フォルダが見つかりません（スキップ）: {folder}");
+                        continue;
+                    }
+
+                    foreach (var file in new DirectoryInfo(folder).EnumerateFiles("*", options))
+                    {
+                        scanned++;
+                        if (Theme.ArchiveExtensions.Contains(file.Extension.ToLowerInvariant()))
+                            list.Add(new TagFileEntry(file.FullName, file.Length, file.LastWriteTimeUtc.Ticks, file.CreationTime));
+
+                        if (scanned % 1000 == 0)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            var s = scanned; var m = list.Count; var fi = folderIdx; var fc = folders.Count;
+                            Dispatcher.BeginInvoke(() =>
+                                TxtTagFileListHeader.Text = $"リスト作成中... {s:N0}件走査 / {m:N0}件該当（フォルダ{fi}/{fc}）");
+                        }
+                    }
+                    TagScanLog($"[TagScan] フォルダ{folderIdx}/{folders.Count}完了: {folder}（累計{scanned:N0}件走査 / {list.Count:N0}件該当）");
+                }
+            }
+            finally
+            {
+                heartbeatCts.Cancel();
+                try { await heartbeatTask; } catch { }
+            }
+
+            ct.ThrowIfCancellationRequested();
+
+            Dispatcher.BeginInvoke(() => TxtTagFileListHeader.Text = $"並べ替え中...（{list.Count:N0}件）");
+            TagScanLog($"[TagScan] 並べ替え開始（{sort}, {list.Count:N0}件）");
+            var sortSw = System.Diagnostics.Stopwatch.StartNew();
+
+            switch (sort)
+            {
+                case "name":
+                    // Path.GetFileNameを比較のたびに呼ぶと比較回数(O(n log n))分だけ再パースが走るので、
+                    // 1件につき1回だけ計算してからOrderByのキーとして使う。
+                    list = [.. list.OrderBy(e => Path.GetFileName(e.Path), NaturalStringComparer.Instance)];
+                    if (sortDir == "desc") list.Reverse();
+                    break;
+                case "date":
+                    list = sortDir == "asc" ? [.. list.OrderBy(e => e.Ticks)] : [.. list.OrderByDescending(e => e.Ticks)];
+                    break;
+                case "created":
+                    list = sortDir == "asc" ? [.. list.OrderBy(e => e.Created)] : [.. list.OrderByDescending(e => e.Created)];
+                    break;
+                case "size":
+                    list = sortDir == "asc" ? [.. list.OrderBy(e => e.Size)] : [.. list.OrderByDescending(e => e.Size)];
+                    break;
+                case "random":
+                    var rnd = new Random();
+                    list = [.. list.OrderBy(_ => rnd.Next())];
+                    break;
+            }
+            TagScanLog($"[TagScan] 並べ替え完了（経過{sortSw.Elapsed.TotalSeconds:F1}秒）");
+            return list;
+        }, ct);
+
+        return entries;
+    }
+
+    /// <summary>有効なソースフォルダ横断で、現在の検索条件に合うアーカイブをランダムに1つ開く（ドライブをまたいでも可）。</summary>
+    private async void OpenRandomFromActiveTagFolders()
+    {
+        _tagListCts?.Cancel();
+        _tagListCts = new CancellationTokenSource();
+        var ct = _tagListCts.Token;
+
+        TxtTagFileListHeader.Text = "リスト作成中...";
+        SetStatus("ソースフォルダを走査しています...");
+
+        List<string> results;
+        try
+        {
+            results = await ComputeTagSearchResultsAsync(ct);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { SetStatus($"エラー: {ex.Message}"); return; }
+        if (ct.IsCancellationRequested) return;
+
+        _tagFileList = results;
+        if (_tagFileList.Count == 0)
+        {
+            SetStatus("対象ファイルが見つかりません（有効なソースフォルダ・検索条件を確認してください）");
+            TxtTagFileListHeader.Text = "ファイル一覧";
+            RebuildTagFileListPanel();
+            return;
+        }
+
+        _folderRoot = null;
+
+        // 選んだファイルを1件目として表示する（一覧の途中の番号だと分かりづらいため）
+        var pickedIdx = new Random().Next(_tagFileList.Count);
+        var picked = _tagFileList[pickedIdx];
+        _tagFileList.RemoveAt(pickedIdx);
+        _tagFileList.Insert(0, picked);
+        _tagFileIndex = 0;
+
+        LoadArchive(picked);
+    }
+
+    /// <summary>現在開いているファイルの識別キー（パス＋サイズ＋更新日時）を返す。</summary>
+    private (string Path, long Size, long Ticks)? GetCurrentFileIdentity()
+        => _archivePath == null ? null : GetFileIdentity(_archivePath);
+
+    /// <summary>指定ファイルの識別キー（パス＋サイズ＋更新日時）を返す。</summary>
+    private static (string Path, long Size, long Ticks)? GetFileIdentity(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return (path, info.Length, info.LastWriteTimeUtc.Ticks);
+        }
+        catch { return null; }
+    }
+
+    private List<Tag> GetCurrentFileTags()
+    {
+        var identity = GetCurrentFileIdentity();
+        if (identity == null) return [];
+        var entry = TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+        return entry == null ? [] : TagRepository.GetTagsForFile(entry.Id);
+    }
+
+    private string? GetCurrentWorkTitle()
+    {
+        var identity = GetCurrentFileIdentity();
+        if (identity == null) return null;
+        var entry = TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+        return entry?.WorkTitle;
+    }
+
+    /// <summary>作品名テキストボックスの内容をフォーカスアウト/Enterで保存する。未変更なら何もしない。</summary>
+    private void SaveWorkTitleFromText(string text)
+    {
+        var identity = GetCurrentFileIdentity();
+        if (identity == null) return;
+
+        var title = text.Trim();
+        if (title == (GetCurrentWorkTitle() ?? "")) return;
+
+        var entryId = TagRepository.GetOrCreateFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+        TagRepository.SetWorkTitle(entryId, string.IsNullOrEmpty(title) ? null : title);
+    }
+
+    /// <summary>
+    /// タグモード専用の削除。設定済みの削除フォルダへ移動する他モードとは異なり、
+    /// ソースフォルダがドライブをまたいでも迷わないようWindowsのゴミ箱へ送る。
+    /// </summary>
+    private void DeleteCurrentFileToRecycleBin()
+    {
+        if (_archivePath == null) return;
+        var identity = GetCurrentFileIdentity();
+        var path = _archivePath;
+
+        if (MessageBox.Show($"「{Path.GetFileName(path)}」をゴミ箱へ移動しますか？", "確認",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+
+            if (identity != null)
+                TagRepository.DeleteFileEntryByIdentity(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+
+            SetStatus($"ゴミ箱へ移動しました: {Path.GetFileName(path)}");
+            AfterTagFileDeleted();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"ゴミ箱への移動に失敗しました:\n{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// タグモードで削除したファイルを_tagFileListから除去し、次のファイルへ進む。
+    /// 閲覧/抽出モードのAfterFileAction()は_folderArchives（単一フォルダ前提）を更新するだけで、
+    /// タグモード独自の_tagFileList（検索結果・複数フォルダ横断のランダム一覧）には反映されないため分離。
+    /// </summary>
+    private void AfterTagFileDeleted()
+    {
+        int oldIdx = _tagFileIndex;
+        if (oldIdx >= 0 && oldIdx < _tagFileList.Count)
+        {
+            // 参照を変えずに書き換えると、右サイドバーの再描画判定（参照比較）に引っかからず表示が更新されない
+            _tagFileList = [.. _tagFileList.Where((_, i) => i != oldIdx)];
+        }
+
+        if (_tagFileList.Count == 0)
+        {
+            _archivePath = null;
+            _tagFileIndex = -1;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            EmptyMessage.Visibility = Visibility.Visible;
+            UpdateNavigation();
+            ClearStatusBar();
+            RebuildSidebar();
+            return;
+        }
+
+        int idx = Math.Clamp(oldIdx, 0, _tagFileList.Count - 1);
+        _tagFileIndex = idx;
+        CloseViewer();
+        LoadArchive(_tagFileList[idx], keepViewer: false);
+    }
+
+    private StackPanel BuildTagChipRow(Tag tag)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+
+        var bgBrush = string.IsNullOrEmpty(tag.Color)
+            ? Theme.PanelBrush
+            : new SolidColorBrush((Color)ColorConverter.ConvertFromString(tag.Color)!);
+        var fgBrush = ContrastForeground(bgBrush);
+
+        var pill = new Border
+        {
+            Background = bgBrush,
+            BorderBrush = Theme.BorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10, 3, 10, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = tag.Name,
+                Foreground = fgBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = 13
+            }
+        };
+        row.Children.Add(pill);
+
+        var removeBtn = CreateSidebarButton("×", () => RemoveTagFromCurrentFile(tag.Id));
+        removeBtn.Margin = new Thickness(4, 0, 0, 0);
+        removeBtn.Padding = new Thickness(6, 0, 6, 0);
+        row.Children.Add(removeBtn);
+        return row;
+    }
+
+    private void OpenTagPickerForCurrentFile()
+    {
+        var identity = GetCurrentFileIdentity();
+        if (identity == null) return;
+        var entryId = TagRepository.GetOrCreateFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+        var current = TagRepository.GetTagsForFile(entryId).Select(t => t.Id).ToHashSet();
+
+        var dlg = new Dialogs.TagPickerDialog(current) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        foreach (var id in dlg.SelectedTagIds.Except(current))
+            TagRepository.AddFileTag(entryId, id);
+        foreach (var id in current.Except(dlg.SelectedTagIds))
+            TagRepository.RemoveFileTag(entryId, id);
+
+        RebuildSidebar();
+    }
+
+    private void RemoveTagFromCurrentFile(long tagId)
+    {
+        var identity = GetCurrentFileIdentity();
+        if (identity == null) return;
+        var entry = TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks);
+        if (entry == null) return;
+        TagRepository.RemoveFileTag(entry.Id, tagId);
+        RebuildSidebar();
     }
 
     // ======== RATING (昇降格) SIDEBAR ========
@@ -1042,6 +1887,7 @@ public partial class MainWindow : Window
 
         var src = _archivePath;
         var dst = Path.Combine(targetFolder, Path.GetFileName(src));
+        var deletedFileIdentity = action == RatingAction.Delete ? GetFileIdentity(src) : null;
 
         try
         {
@@ -1060,6 +1906,8 @@ public partial class MainWindow : Window
 
             RecordUndo(src, dst, "rating");
             SetStatus($"移動しました: {Path.GetFileName(dst)} → {Path.GetFileName(targetFolder)}");
+            if (deletedFileIdentity != null)
+                TagRepository.DeleteFileEntryByIdentity(deletedFileIdentity.Value.Path, deletedFileIdentity.Value.Size, deletedFileIdentity.Value.Ticks);
             AfterFileAction();
         }
         catch (Exception ex)
@@ -1352,6 +2200,7 @@ public partial class MainWindow : Window
 
         var src = _videoPath;
         var dst = Path.Combine(targetFolder, Path.GetFileName(src));
+        var deletedFileIdentity = action == RatingAction.Delete ? GetFileIdentity(src) : null;
 
         try
         {
@@ -1372,6 +2221,8 @@ public partial class MainWindow : Window
 
             RecordUndo(src, dst, "video");
             SetStatus($"移動しました: {Path.GetFileName(dst)} → {Path.GetFileName(targetFolder)}");
+            if (deletedFileIdentity != null)
+                TagRepository.DeleteFileEntryByIdentity(deletedFileIdentity.Value.Path, deletedFileIdentity.Value.Size, deletedFileIdentity.Value.Ticks);
             AfterVideoAction();
         }
         catch (Exception ex)
@@ -1776,6 +2627,56 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>タグモードのソースフォルダ追加。完全に同じパスの重複登録を防ぐ（親子重複はスキャン側で除去）。</summary>
+    private void AddTagSourceFolder()
+    {
+        var dlg = new System.Windows.Forms.FolderBrowserDialog();
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        string normalized;
+        try { normalized = Path.GetFullPath(dlg.SelectedPath).TrimEnd('\\', '/'); }
+        catch { normalized = dlg.SelectedPath; }
+
+        bool alreadyExists = _tagSourceFolders.Any(f =>
+        {
+            try { return string.Equals(Path.GetFullPath(f).TrimEnd('\\', '/'), normalized, StringComparison.OrdinalIgnoreCase); }
+            catch { return string.Equals(f, dlg.SelectedPath, StringComparison.OrdinalIgnoreCase); }
+        });
+        if (alreadyExists)
+        {
+            SetStatus("すでに登録されているフォルダです");
+            return;
+        }
+
+        _tagSourceFolders.Add(dlg.SelectedPath);
+        SaveStateOnly();
+        RebuildSidebar();
+    }
+
+    private void MoveTagSourceFolder(string folder, int delta)
+    {
+        int idx = _tagSourceFolders.IndexOf(folder);
+        if (idx < 0) return;
+        int newIdx = idx + delta;
+        if (newIdx < 0 || newIdx >= _tagSourceFolders.Count) return;
+
+        (_tagSourceFolders[idx], _tagSourceFolders[newIdx]) = (_tagSourceFolders[newIdx], _tagSourceFolders[idx]);
+        SaveStateOnly();
+        RebuildSidebar();
+    }
+
+    private void OpenFolderInExplorer(string folder)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = folder, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"エクスプローラーを開けませんでした: {ex.Message}");
+        }
+    }
+
     // ======== OPEN / LOAD ========
 
     private void BtnOpen_Click(object sender, RoutedEventArgs e)
@@ -1794,6 +2695,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        // tag mode falls through here: same archive-open dialog as extract/rating mode
         var dlg = new OpenFileDialog
         {
             Filter = "アーカイブ|*.zip;*.rar;*.7z;*.cbz;*.cbr|すべて|*.*"
@@ -2475,6 +3377,25 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_mode == "tag")
+        {
+            if (_tagFileList.Count == 0 || _tagFileIndex < 0)
+            {
+                TxtPrevFile.Text = "";
+                TxtCurrentFile.Text = _archivePath != null ? Path.GetFileName(_archivePath) : "";
+                TxtFilePosition.Text = "";
+                TxtNextFile.Text = "";
+                return;
+            }
+
+            TxtCurrentFile.Text = Path.GetFileName(_archivePath) ?? "";
+            TxtFilePosition.Text = $"({_tagFileIndex + 1}/{_tagFileList.Count})";
+            TxtPrevFile.Text = _tagFileIndex > 0 ? Path.GetFileName(_tagFileList[_tagFileIndex - 1]) : "";
+            TxtNextFile.Text = _tagFileIndex < _tagFileList.Count - 1
+                ? Path.GetFileName(_tagFileList[_tagFileIndex + 1]) : "";
+            return;
+        }
+
         if (_folderArchives.Count == 0 || _currentArchiveIndex < 0)
         {
             TxtPrevFile.Text = "";
@@ -2504,6 +3425,18 @@ public partial class MainWindow : Window
         {
             if (_videoPath == null) { SetStatus("動画が開かれていません"); return; }
             NavigateVideo(delta);
+            return;
+        }
+
+        if (_mode == "tag")
+        {
+            if (_tagFileList.Count == 0) { SetStatus("ファイルが開かれていません"); return; }
+            int newTagIdx = _tagFileIndex + delta;
+            if (newTagIdx >= 0 && newTagIdx < _tagFileList.Count)
+            {
+                _tagFileIndex = newTagIdx;
+                LoadArchive(_tagFileList[newTagIdx], keepViewer: _viewerOpen);
+            }
             return;
         }
 
@@ -2565,6 +3498,18 @@ public partial class MainWindow : Window
             if (_videoFiles.Count == 0 || _currentVideoIndex < 0) { SetStatus("動画が開かれていません"); return; }
             int idx = last ? _videoFiles.Count - 1 : 0;
             if (idx != _currentVideoIndex) PlayVideo(_videoFiles[idx]);
+            return;
+        }
+
+        if (_mode == "tag")
+        {
+            if (_tagFileList.Count == 0) { SetStatus("ファイルが開かれていません"); return; }
+            int tagIdx = last ? _tagFileList.Count - 1 : 0;
+            if (tagIdx != _tagFileIndex)
+            {
+                _tagFileIndex = tagIdx;
+                LoadArchive(_tagFileList[tagIdx], keepViewer: _viewerOpen);
+            }
             return;
         }
 
@@ -2686,6 +3631,11 @@ public partial class MainWindow : Window
                 else
                     UpdateVideoNavigation();
             }
+        }
+        else if (_mode == "tag")
+        {
+            if (_tagFileList.Count > 0)
+                RebuildTagFileListForSort(forceReshuffle);
         }
         else
         {

@@ -86,4 +86,13 @@ public class AppState
 
     [JsonPropertyName("image_scale_mode")]
     public string ImageScaleMode { get; set; } = "Default";
+
+    [JsonPropertyName("tag_db_mode")]
+    public string TagDbMode { get; set; } = "demo";
+
+    [JsonPropertyName("tag_source_folders")]
+    public List<string> TagSourceFolders { get; set; } = [];
+
+    [JsonPropertyName("tag_disabled_folders")]
+    public List<string> TagDisabledFolders { get; set; } = [];
 }

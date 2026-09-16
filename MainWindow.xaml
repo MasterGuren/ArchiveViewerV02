@@ -105,6 +105,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
@@ -113,6 +114,7 @@
                     <ToggleButton x:Name="BtnExtract" Content="抽出" Style="{StaticResource ModeButton}" Click="BtnExtract_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnVideo" Content="動画" Style="{StaticResource ModeButton}" Click="BtnVideo_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnImage" Content="画像" Style="{StaticResource ModeButton}" Click="BtnImage_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnTag" Content="🏷 タグ" Style="{StaticResource ModeButton}" Click="BtnTag_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnBrowse" Content="旧閲覧" Style="{StaticResource ModeButton}" Click="BtnBrowse_Click" Margin="0,0,12,0" Visibility="Collapsed"/>
 
                     <Border Width="1" Background="{DynamicResource ThemeBorder}" Margin="0,8"/>
@@ -179,6 +181,11 @@
                                VerticalAlignment="Center" HorizontalAlignment="Left" Margin="4,0,0,0"
                                TextTrimming="CharacterEllipsis"/>
                 </Grid>
+
+                <!-- タグDB切り替え（画面右端固定） -->
+                <Button x:Name="BtnTagDbMode" Grid.Column="2" Style="{StaticResource DarkButton}"
+                        Click="BtnTagDbMode_Click" VerticalAlignment="Center" Margin="8,0,0,0"
+                        FontWeight="Bold" ToolTip="タグDBの切り替え（デモ／本番）。次回起動時も保持されます。"/>
             </Grid>
         </Border>
 
@@ -349,23 +356,117 @@
                 </Grid>
             </Grid>
 
-            <!-- RIGHT SIDEBAR (Extract mode only) -->
+            <!-- RIGHT SIDEBAR (Extract mode / Tag mode) -->
             <Border x:Name="RightSidebar" Grid.Column="2" Background="{DynamicResource ThemePanel}"
                     BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="1,0,0,0" Visibility="Collapsed">
-                <DockPanel Margin="12">
-                    <Button DockPanel.Dock="Top" Content="選択範囲をリストに追加"
-                            Style="{StaticResource AccentButton}" Click="BtnAddToExtractList_Click" Margin="0,0,0,4"/>
-                    <Button x:Name="BtnClearExtractList" DockPanel.Dock="Top" Content="リストクリア"
-                            Click="BtnClearExtractList_Click" Margin="0,0,0,8"
-                            Background="Transparent" Foreground="{DynamicResource ThemeSubtext}"
-                            BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="1"
-                            FontSize="12" Padding="4,2" IsEnabled="False"/>
-                    <Button DockPanel.Dock="Bottom" Content="抽出実行"
-                            Style="{StaticResource AccentButton}" Click="BtnExecuteExtract_Click" Margin="0,8,0,0"/>
-                    <ScrollViewer x:Name="RightSidebarScroller" VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="ExtractListPanel"/>
-                    </ScrollViewer>
-                </DockPanel>
+                <Grid>
+                    <DockPanel x:Name="ExtractRightSidebarContent" Margin="12">
+                        <Button DockPanel.Dock="Top" Content="選択範囲をリストに追加"
+                                Style="{StaticResource AccentButton}" Click="BtnAddToExtractList_Click" Margin="0,0,0,4"/>
+                        <Button x:Name="BtnClearExtractList" DockPanel.Dock="Top" Content="リストクリア"
+                                Click="BtnClearExtractList_Click" Margin="0,0,0,8"
+                                Background="Transparent" Foreground="{DynamicResource ThemeSubtext}"
+                                BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="1"
+                                FontSize="12" Padding="4,2" IsEnabled="False"/>
+                        <Button DockPanel.Dock="Bottom" Content="抽出実行"
+                                Style="{StaticResource AccentButton}" Click="BtnExecuteExtract_Click" Margin="0,8,0,0"/>
+                        <ScrollViewer x:Name="RightSidebarScroller" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ExtractListPanel"/>
+                        </ScrollViewer>
+                    </DockPanel>
+
+                    <DockPanel x:Name="TagRightSidebarContent" Margin="12" Visibility="Collapsed">
+                        <TextBlock DockPanel.Dock="Top" Text="検索" Foreground="{DynamicResource ThemeText}"
+                                   FontFamily="Yu Gothic UI" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <TextBlock Text="タグ" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,0,0,2"/>
+                            <StackPanel x:Name="TagSearchChipsPanel" Margin="0,0,0,4"/>
+                            <Button Content="+ タグで絞り込む" Click="BtnTagSearchPickTags_Click" Padding="4" Margin="0,0,0,6"
+                                    Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <RadioButton x:Name="RbTagSearchOr" Content="OR（いずれか）" GroupName="TagSearchMode" IsChecked="True"
+                                             Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,0,12,0"/>
+                                <RadioButton x:Name="RbTagSearchAnd" Content="AND（すべて）" GroupName="TagSearchMode"
+                                             Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"/>
+                            </StackPanel>
+                            <TextBlock Text="文字列（ファイル名／作品名）" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,0,0,2"/>
+                            <TextBox x:Name="TxtTagSearchText" Style="{StaticResource DarkTextBox}" Margin="0,0,0,8" KeyDown="TxtTagSearchText_KeyDown"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                <CheckBox x:Name="ChkSearchNoTags" Content="タグ未設定" Click="TagFilterCheckbox_Click"
+                                          Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,0,12,0"/>
+                                <CheckBox x:Name="ChkSearchHasTags" Content="タグ設定済み" Click="TagFilterCheckbox_Click"
+                                          Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <CheckBox x:Name="ChkSearchNoTitle" Content="名前未設定" Click="TagFilterCheckbox_Click"
+                                          Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12" Margin="0,0,12,0"/>
+                                <CheckBox x:Name="ChkSearchHasTitle" Content="名前設定済み" Click="TagFilterCheckbox_Click"
+                                          Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"/>
+                            </StackPanel>
+
+                            <Button Content="🔍 検索実行" Click="BtnExecuteTagSearch_Click" Padding="4"
+                                    Style="{StaticResource AccentButton}"/>
+                        </StackPanel>
+
+                        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorder}" Margin="0,0,0,8"/>
+
+                        <TextBlock x:Name="TxtTagFileListHeader" DockPanel.Dock="Top" Text="ファイル一覧"
+                                   Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
+                                   FontWeight="Bold" Margin="0,0,0,8"/>
+                        <ListBox x:Name="TagFileListPanel" Background="Transparent" BorderThickness="0"
+                                 Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"
+                                 ScrollViewer.CanContentScroll="True"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                 SelectionChanged="TagFileListPanel_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"/>
+                                        <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
+                                                        <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="6,4"/>
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                    <Setter Property="ToolTip" Value="{Binding Path}"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="border" Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+                    </DockPanel>
+                </Grid>
             </Border>
         </Grid>
 

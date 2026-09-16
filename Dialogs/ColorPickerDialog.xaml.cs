@@ -13,18 +13,19 @@ public partial class ColorPickerDialog : Window
         InitializeComponent();
         SelectedColor = currentColor;
 
-        foreach (var colorHex in Theme.ColorChoices)
+        foreach (var (name, colorHex) in Theme.NamedColors)
         {
             var btn = new Button
             {
-                Width = 36, Height = 36,
+                Width = 40, Height = 40,
                 Margin = new Thickness(3),
                 Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colorHex)!),
                 BorderThickness = new Thickness(3),
                 BorderBrush = colorHex == currentColor
                     ? Brushes.White
                     : Theme.BorderBrush,
-                Cursor = System.Windows.Input.Cursors.Hand
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = name
             };
             var hex = colorHex;
             btn.Click += (_, _) =>
