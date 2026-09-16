@@ -37,7 +37,7 @@ public static class RatingService
             RatingAction.Promote2 => GetRatingFolder(preset, Math.Min(currentRank + 2, 9)),
             RatingAction.Promote1 => GetRatingFolder(preset, Math.Min(currentRank + 1, 9)),
             RatingAction.Stay => GetConfirmedFolder(preset, currentRank),
-            RatingAction.CategoryMove => currentRank == 0 ? GetCategoryMoveFolder(preset) : null,
+            RatingAction.CategoryMove => currentRank == 0 ? GetCategoryMoveFolders(preset).FirstOrDefault() : null,
             RatingAction.Demote1 => currentRank <= 0 ? null : GetRatingFolder(preset, currentRank - 1),
             RatingAction.Delete => GetDeleteFolder(preset, currentRank),
             _ => null
@@ -83,8 +83,11 @@ public static class RatingService
         return string.IsNullOrEmpty(folder) ? null : folder;
     }
 
-    private static string? GetCategoryMoveFolder(RatingPresetData preset)
+    /// <summary>
+    /// Returns the configured (non-empty) category move candidate folders, in order.
+    /// </summary>
+    public static List<string> GetCategoryMoveFolders(RatingPresetData preset)
     {
-        return string.IsNullOrEmpty(preset.CategoryMoveFolder) ? null : preset.CategoryMoveFolder;
+        return preset.CategoryMoveFolders.Where(f => !string.IsNullOrEmpty(f)).ToList();
     }
 }

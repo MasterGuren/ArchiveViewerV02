@@ -382,9 +382,19 @@
                 </StackPanel>
                 <TextBlock x:Name="TxtSelectionInfo" DockPanel.Dock="Right" Foreground="{DynamicResource ThemeSubtext}"
                            FontFamily="Yu Gothic UI" FontSize="13" VerticalAlignment="Center"/>
-                <TextBlock x:Name="TxtStatus" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
-                           VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="TxtStatus_Click"
-                           TextTrimming="CharacterEllipsis"/>
+                <Grid VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TxtStatus" Grid.Column="0" Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="13"
+                               VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="TxtStatus_Click"
+                               TextTrimming="CharacterEllipsis"/>
+                    <Button x:Name="BtnSearchWeb" Grid.Column="1" Content="🔍" Click="BtnSearchWeb_Click"
+                            ToolTip="DuckDuckGoで検索" Cursor="Hand" FontSize="14"
+                            Background="Transparent" BorderThickness="0" Foreground="{DynamicResource ThemeSubtext}"
+                            Padding="4,0,0,0" Margin="6,0,0,0"/>
+                </Grid>
             </DockPanel>
         </Border>
     </Grid>

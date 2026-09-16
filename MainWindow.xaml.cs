@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -982,27 +983,53 @@ public partial class MainWindow : Window
             var desc = RatingService.GetTargetDescription(level, action);
             if (desc == null) continue; // e.g., demote at rank 0
 
+            if (action == RatingAction.CategoryMove)
+            {
+                var folders = RatingService.GetCategoryMoveFolders(_currentRatingData);
+                if (folders.Count == 0)
+                {
+                    var row0 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+                    var placeholderBtn = CreateSidebarButton($"{label} {desc}", () => { }, color);
+                    placeholderBtn.MinWidth = 120;
+                    placeholderBtn.IsEnabled = false;
+                    placeholderBtn.ToolTip = "(移動先フォルダ未設定)";
+                    row0.Children.Add(placeholderBtn);
+                    LeftSidebar.Children.Add(row0);
+                    continue;
+                }
+
+                foreach (var folder in folders)
+                {
+                    var f = folder;
+                    var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+                    var btn = CreateSidebarButton($"{label} {Path.GetFileName(f.TrimEnd('\\', '/'))}", () => ExecuteRatingAction(action, f), color);
+                    btn.MinWidth = 120;
+                    btn.ToolTip = f;
+                    row.Children.Add(btn);
+                    LeftSidebar.Children.Add(row);
+                    AddSidebarText($"  → {f}");
+                }
+                continue;
+            }
+
             var targetFolder = RatingService.GetTargetFolder(_currentRatingData, level, action);
             var act = action;
 
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-            var btn = CreateSidebarButton($"{label} {desc}", () => ExecuteRatingAction(act), color);
-            btn.MinWidth = 120;
-            btn.IsEnabled = targetFolder != null;
-            if (targetFolder != null)
-                btn.ToolTip = targetFolder;
-            else
-                btn.ToolTip = "(移動先フォルダ未設定)";
-            row.Children.Add(btn);
+            var row2 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            var btn2 = CreateSidebarButton($"{label} {desc}", () => ExecuteRatingAction(act), color);
+            btn2.MinWidth = 120;
+            btn2.IsEnabled = targetFolder != null;
+            btn2.ToolTip = targetFolder ?? "(移動先フォルダ未設定)";
+            row2.Children.Add(btn2);
 
-            LeftSidebar.Children.Add(row);
+            LeftSidebar.Children.Add(row2);
 
             if (targetFolder != null)
                 AddSidebarText($"  → {targetFolder}");
         }
     }
 
-    private async void ExecuteRatingAction(RatingAction action)
+    private async void ExecuteRatingAction(RatingAction action, string? explicitTargetFolder = null)
     {
         if (_archivePath == null || _currentRatingData == null)
         {
@@ -1010,7 +1037,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var targetFolder = RatingService.GetTargetFolder(_currentRatingData, _ratingJudgmentLevel, action);
+        var targetFolder = explicitTargetFolder ?? RatingService.GetTargetFolder(_currentRatingData, _ratingJudgmentLevel, action);
         if (targetFolder == null) return;
 
         var src = _archivePath;
@@ -1217,17 +1244,46 @@ public partial class MainWindow : Window
             var desc = RatingService.GetTargetDescription(level, action);
             if (desc == null) continue;
 
+            if (action == RatingAction.CategoryMove)
+            {
+                var folders = RatingService.GetCategoryMoveFolders(_currentVideoRatingData);
+                if (folders.Count == 0)
+                {
+                    var row0 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+                    var placeholderBtn = CreateSidebarButton($"{label} {desc}", () => { }, color);
+                    placeholderBtn.MinWidth = 120;
+                    placeholderBtn.IsEnabled = false;
+                    placeholderBtn.ToolTip = "(移動先フォルダ未設定)";
+                    row0.Children.Add(placeholderBtn);
+                    LeftSidebar.Children.Add(row0);
+                    continue;
+                }
+
+                foreach (var folder in folders)
+                {
+                    var f = folder;
+                    var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+                    var btn = CreateSidebarButton($"{label} {Path.GetFileName(f.TrimEnd('\\', '/'))}", () => ExecuteVideoRatingAction(action, f), color);
+                    btn.MinWidth = 120;
+                    btn.ToolTip = f;
+                    row.Children.Add(btn);
+                    LeftSidebar.Children.Add(row);
+                    AddSidebarText($"  → {f}");
+                }
+                continue;
+            }
+
             var targetFolder = RatingService.GetTargetFolder(_currentVideoRatingData, level, action);
             var act = action;
 
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
-            var btn = CreateSidebarButton($"{label} {desc}", () => ExecuteVideoRatingAction(act), color);
-            btn.MinWidth = 120;
-            btn.IsEnabled = targetFolder != null;
-            btn.ToolTip = targetFolder ?? "(移動先フォルダ未設定)";
-            row.Children.Add(btn);
+            var row2 = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 0) };
+            var btn2 = CreateSidebarButton($"{label} {desc}", () => ExecuteVideoRatingAction(act), color);
+            btn2.MinWidth = 120;
+            btn2.IsEnabled = targetFolder != null;
+            btn2.ToolTip = targetFolder ?? "(移動先フォルダ未設定)";
+            row2.Children.Add(btn2);
 
-            LeftSidebar.Children.Add(row);
+            LeftSidebar.Children.Add(row2);
 
             if (targetFolder != null)
                 AddSidebarText($"  → {targetFolder}");
@@ -1283,7 +1339,7 @@ public partial class MainWindow : Window
         LeftSidebar.Children.Add(row);
     }
 
-    private async void ExecuteVideoRatingAction(RatingAction action)
+    private async void ExecuteVideoRatingAction(RatingAction action, string? explicitTargetFolder = null)
     {
         if (_videoPath == null || _currentVideoRatingData == null)
         {
@@ -1291,7 +1347,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var targetFolder = RatingService.GetTargetFolder(_currentVideoRatingData, _videoRatingJudgmentLevel, action);
+        var targetFolder = explicitTargetFolder ?? RatingService.GetTargetFolder(_currentVideoRatingData, _videoRatingJudgmentLevel, action);
         if (targetFolder == null) return;
 
         var src = _videoPath;
@@ -3270,19 +3326,34 @@ public partial class MainWindow : Window
         {
             var files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories)
                 .Where(f => Theme.VideoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                .ToArray();
-            if (files.Length > 0)
+                .ToList();
+            if (files.Count == 0)
             {
-                var rnd = new Random();
-                PlayVideo(files[rnd.Next(files.Length)]);
-                // ランダムソート時はリスト1個目を再生
-                if (_folderSort == "random" && _videoFiles.Count > 0 && _currentVideoIndex != 0)
-                    PlayVideo(_videoFiles[0]);
+                SetStatus($"フォルダ内に対象ファイルがありません: {Path.GetFileName(folder)}");
+                return;
+            }
+
+            string target;
+            if (_folderSort == "random")
+            {
+                // SortFiles は毎回 new Random でシャッフルするので、ここでソートした順序を
+                // PlayVideo→BuildVideoFileList のキャッシュに事前シードして再シャッフルを防ぐ。
+                // これで PlayVideo を1回しか呼ばず、_currentVideoIndex == 0 も維持できる。
+                var sorted = SortFiles(files, _folderSort, _folderSortDir);
+                target = sorted[0];
+                var targetDir = Path.GetDirectoryName(target);
+                if (targetDir == folder)
+                {
+                    _videoFiles = sorted;
+                    _lastVideoDirCache = targetDir;
+                    _lastVideoSortMode = _folderSort + ":" + _folderSortDir;
+                }
             }
             else
             {
-                SetStatus($"フォルダ内に対象ファイルがありません: {Path.GetFileName(folder)}");
+                target = files[new Random().Next(files.Count)];
             }
+            PlayVideo(target);
         }
         catch (Exception ex) { SetStatus($"エラー: {ex.Message}"); }
     }
@@ -3991,11 +4062,39 @@ public partial class MainWindow : Window
         return $"作成 {created:yyyy-MM-dd HH:mm}  |  更新 {modified:yyyy-MM-dd HH:mm}";
     }
 
+    private string? GetCurrentDisplayName()
+    {
+        string? path = _mode switch
+        {
+            "video" => _videoPath,
+            "image" => _imageFolderPath,
+            _ => _archivePath
+        };
+        if (string.IsNullOrEmpty(path)) return null;
+        var name = Path.GetFileNameWithoutExtension(path);
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
     private void TxtStatus_Click(object sender, MouseButtonEventArgs e)
     {
-        if (!string.IsNullOrEmpty(TxtStatus.Text))
+        var name = GetCurrentDisplayName();
+        if (name != null) Clipboard.SetText(name);
+    }
+
+    private void BtnSearchWeb_Click(object sender, RoutedEventArgs e)
+    {
+        var name = GetCurrentDisplayName();
+        if (name == null) return;
+
+        var query = Uri.EscapeDataString(name);
+        var url = $"https://duckduckgo.com/?ia=web&origin=funnel_home_website&t=h_&q={query}";
+        try
         {
-            Clipboard.SetText(TxtStatus.Text);
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ShowError($"ブラウザを開けませんでした:\n{ex.Message}");
         }
     }
 

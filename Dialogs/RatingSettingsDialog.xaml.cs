@@ -56,10 +56,16 @@ public partial class RatingSettingsDialog : Window
 
         AddSeparator();
 
-        // === Category Move Folder (0→1 only) ===
-        BuildSectionHeader("カテゴリー移動フォルダ (0→1判定のみ)", () => Save());
-        AddHelpText("0→1判定時に表示される「▶▲カテゴリー移動」ボタンの移動先フォルダです。");
-        BuildFolderRow("移動先", _data.CategoryMoveFolder, (path) => _data.CategoryMoveFolder = path);
+        // === Category Move Folders (0→1 only, up to 9 candidates) ===
+        BuildSectionHeader("カテゴリー移動フォルダ (0→1判定のみ、最大9件)", () => Save());
+        AddHelpText("0→1判定時に表示される「▶▲カテゴリー移動」ボタンの移動先候補です。設定した数だけボタンが並びます。");
+        while (_data.CategoryMoveFolders.Count < 9)
+            _data.CategoryMoveFolders.Add("");
+        for (int i = 0; i < 9; i++)
+        {
+            var idx = i;
+            BuildFolderRow($"候補{i + 1}", _data.CategoryMoveFolders[i], (path) => _data.CategoryMoveFolders[idx] = path);
+        }
 
         AddSeparator();
 
