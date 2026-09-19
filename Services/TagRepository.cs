@@ -3,18 +3,33 @@ using Microsoft.Data.Sqlite;
 
 namespace ArchiveViewer.Services;
 
+/// <summary>画像用タグ体系と動画用タグ体系のどちらを操作するかを選ぶ。テーブルは完全に分離されている。</summary>
+public enum TagDomain
+{
+    Image,
+    Video
+}
+
 /// <summary>
 /// タグ・カテゴリ・ファイル紐付けのCRUDを提供する。
+/// domain引数（既定はImage）でテーブル一式を画像用/動画用に切り替える。
 /// </summary>
 public static class TagRepository
 {
+    private static (string Major, string Minor, string Tags, string FileEntries, string FileTags) Tables(TagDomain domain) => domain switch
+    {
+        TagDomain.Video => ("VideoMajorCategories", "VideoMinorCategories", "VideoTags", "VideoFileEntries", "VideoFileTags"),
+        _ => ("MajorCategories", "MinorCategories", "Tags", "FileEntries", "FileTags")
+    };
+
     // === 大カテゴリ ===
 
-    public static List<MajorCategory> GetMajorCategories()
+    public static List<MajorCategory> GetMajorCategories(TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, SortOrder, Color FROM MajorCategories ORDER BY SortOrder, Name;";
+        cmd.CommandText = $"SELECT Id, Name, SortOrder, Color FROM {tbl.Major} ORDER BY SortOrder, Name;";
         using var reader = cmd.ExecuteReader();
         var result = new List<MajorCategory>();
         while (reader.Read())
@@ -30,31 +45,34 @@ public static class TagRepository
         return result;
     }
 
-    public static long AddMajorCategory(string name, int sortOrder = 0)
+    public static long AddMajorCategory(string name, int sortOrder = 0, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO MajorCategories (Name, SortOrder) VALUES ($name, $sort); SELECT last_insert_rowid();";
+        cmd.CommandText = $"INSERT INTO {tbl.Major} (Name, SortOrder) VALUES ($name, $sort); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$name", name);
         cmd.Parameters.AddWithValue("$sort", sortOrder);
         return (long)cmd.ExecuteScalar()!;
     }
 
-    public static void SetMajorCategoryColor(long id, string? color)
+    public static void SetMajorCategoryColor(long id, string? color, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE MajorCategories SET Color = $color WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Major} SET Color = $color WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$color", (object?)color ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
-    public static void RenameMajorCategory(long id, string newName)
+    public static void RenameMajorCategory(long id, string newName, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE MajorCategories SET Name = $name WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Major} SET Name = $name WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$name", newName);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
@@ -63,15 +81,16 @@ public static class TagRepository
     /// <summary>
     /// 渡された順序で大カテゴリのSortOrderを振り直す（ドラッグ&ドロップによる並べ替え用）。
     /// </summary>
-    public static void SetMajorCategorySortOrders(List<long> orderedIds)
+    public static void SetMajorCategorySortOrders(List<long> orderedIds, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var tx = conn.BeginTransaction();
         for (int i = 0; i < orderedIds.Count; i++)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE MajorCategories SET SortOrder = $sort WHERE Id = $id;";
+            cmd.CommandText = $"UPDATE {tbl.Major} SET SortOrder = $sort WHERE Id = $id;";
             cmd.Parameters.AddWithValue("$sort", i);
             cmd.Parameters.AddWithValue("$id", orderedIds[i]);
             cmd.ExecuteNonQuery();
@@ -79,22 +98,24 @@ public static class TagRepository
         tx.Commit();
     }
 
-    public static void DeleteMajorCategory(long id)
+    public static void DeleteMajorCategory(long id, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM MajorCategories WHERE Id = $id;";
+        cmd.CommandText = $"DELETE FROM {tbl.Major} WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
     // === 中カテゴリ ===
 
-    public static List<MinorCategory> GetMinorCategories(long majorCategoryId)
+    public static List<MinorCategory> GetMinorCategories(long majorCategoryId, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, MajorCategoryId, Name, SortOrder, Color, IsRequired FROM MinorCategories WHERE MajorCategoryId = $majorId ORDER BY SortOrder, Name;";
+        cmd.CommandText = $"SELECT Id, MajorCategoryId, Name, SortOrder, Color, IsRequired FROM {tbl.Minor} WHERE MajorCategoryId = $majorId ORDER BY SortOrder, Name;";
         cmd.Parameters.AddWithValue("$majorId", majorCategoryId);
         using var reader = cmd.ExecuteReader();
         var result = new List<MinorCategory>();
@@ -113,22 +134,24 @@ public static class TagRepository
         return result;
     }
 
-    public static void SetMinorCategoryRequired(long id, bool isRequired)
+    public static void SetMinorCategoryRequired(long id, bool isRequired, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE MinorCategories SET IsRequired = $required WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Minor} SET IsRequired = $required WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$required", isRequired ? 1 : 0);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
     /// <summary>必須指定されている中カテゴリを全件返す（タグ選択ダイアログでのバリデーション用）。</summary>
-    public static List<MinorCategory> GetRequiredMinorCategories()
+    public static List<MinorCategory> GetRequiredMinorCategories(TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, MajorCategoryId, Name, SortOrder, Color, IsRequired FROM MinorCategories WHERE IsRequired = 1 ORDER BY SortOrder, Name;";
+        cmd.CommandText = $"SELECT Id, MajorCategoryId, Name, SortOrder, Color, IsRequired FROM {tbl.Minor} WHERE IsRequired = 1 ORDER BY SortOrder, Name;";
         using var reader = cmd.ExecuteReader();
         var result = new List<MinorCategory>();
         while (reader.Read())
@@ -146,32 +169,35 @@ public static class TagRepository
         return result;
     }
 
-    public static long AddMinorCategory(long majorCategoryId, string name, int sortOrder = 0)
+    public static long AddMinorCategory(long majorCategoryId, string name, int sortOrder = 0, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO MinorCategories (MajorCategoryId, Name, SortOrder) VALUES ($majorId, $name, $sort); SELECT last_insert_rowid();";
+        cmd.CommandText = $"INSERT INTO {tbl.Minor} (MajorCategoryId, Name, SortOrder) VALUES ($majorId, $name, $sort); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$majorId", majorCategoryId);
         cmd.Parameters.AddWithValue("$name", name);
         cmd.Parameters.AddWithValue("$sort", sortOrder);
         return (long)cmd.ExecuteScalar()!;
     }
 
-    public static void SetMinorCategoryColor(long id, string? color)
+    public static void SetMinorCategoryColor(long id, string? color, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE MinorCategories SET Color = $color WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Minor} SET Color = $color WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$color", (object?)color ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
-    public static void RenameMinorCategory(long id, string newName)
+    public static void RenameMinorCategory(long id, string newName, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE MinorCategories SET Name = $name WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Minor} SET Name = $name WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$name", newName);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
@@ -180,15 +206,16 @@ public static class TagRepository
     /// <summary>
     /// 渡された順序で中カテゴリのSortOrderを振り直す（ドラッグ&ドロップによる並べ替え用）。
     /// </summary>
-    public static void SetMinorCategorySortOrders(List<long> orderedIds)
+    public static void SetMinorCategorySortOrders(List<long> orderedIds, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var tx = conn.BeginTransaction();
         for (int i = 0; i < orderedIds.Count; i++)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE MinorCategories SET SortOrder = $sort WHERE Id = $id;";
+            cmd.CommandText = $"UPDATE {tbl.Minor} SET SortOrder = $sort WHERE Id = $id;";
             cmd.Parameters.AddWithValue("$sort", i);
             cmd.Parameters.AddWithValue("$id", orderedIds[i]);
             cmd.ExecuteNonQuery();
@@ -196,72 +223,79 @@ public static class TagRepository
         tx.Commit();
     }
 
-    public static void DeleteMinorCategory(long id)
+    public static void DeleteMinorCategory(long id, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM MinorCategories WHERE Id = $id;";
+        cmd.CommandText = $"DELETE FROM {tbl.Minor} WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
     // === タグ ===
 
-    public static List<Tag> GetAllTags()
+    public static List<Tag> GetAllTags(TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, MinorCategoryId, Name, SortOrder, Color FROM Tags ORDER BY SortOrder, Name;";
+        cmd.CommandText = $"SELECT Id, MinorCategoryId, Name, SortOrder, Color FROM {tbl.Tags} ORDER BY SortOrder, Name;";
         using var reader = cmd.ExecuteReader();
         return ReadTags(reader);
     }
 
-    public static List<Tag> GetTagsByMinorCategory(long minorCategoryId)
+    public static List<Tag> GetTagsByMinorCategory(long minorCategoryId, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, MinorCategoryId, Name, SortOrder, Color FROM Tags WHERE MinorCategoryId = $minorId ORDER BY SortOrder, Name;";
+        cmd.CommandText = $"SELECT Id, MinorCategoryId, Name, SortOrder, Color FROM {tbl.Tags} WHERE MinorCategoryId = $minorId ORDER BY SortOrder, Name;";
         cmd.Parameters.AddWithValue("$minorId", minorCategoryId);
         using var reader = cmd.ExecuteReader();
         return ReadTags(reader);
     }
 
-    public static long AddTag(string name, long? minorCategoryId = null, int sortOrder = 0)
+    public static long AddTag(string name, long? minorCategoryId = null, int sortOrder = 0, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Tags (MinorCategoryId, Name, SortOrder) VALUES ($minorId, $name, $sort); SELECT last_insert_rowid();";
+        cmd.CommandText = $"INSERT INTO {tbl.Tags} (MinorCategoryId, Name, SortOrder) VALUES ($minorId, $name, $sort); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$minorId", (object?)minorCategoryId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$name", name);
         cmd.Parameters.AddWithValue("$sort", sortOrder);
         return (long)cmd.ExecuteScalar()!;
     }
 
-    public static void RenameTag(long id, string newName)
+    public static void RenameTag(long id, string newName, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Tags SET Name = $name WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Tags} SET Name = $name WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$name", newName);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
-    public static void SetTagColor(long id, string? color)
+    public static void SetTagColor(long id, string? color, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Tags SET Color = $color WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Tags} SET Color = $color WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$color", (object?)color ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
 
-    public static void SetTagCategory(long id, long? minorCategoryId)
+    public static void SetTagCategory(long id, long? minorCategoryId, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Tags SET MinorCategoryId = $minorId WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.Tags} SET MinorCategoryId = $minorId WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$minorId", (object?)minorCategoryId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
@@ -270,15 +304,16 @@ public static class TagRepository
     /// <summary>
     /// 渡された順序でタグのSortOrderを振り直す（ドラッグ&ドロップによる並べ替え用）。
     /// </summary>
-    public static void SetTagSortOrders(List<long> orderedTagIds)
+    public static void SetTagSortOrders(List<long> orderedTagIds, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var tx = conn.BeginTransaction();
         for (int i = 0; i < orderedTagIds.Count; i++)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = "UPDATE Tags SET SortOrder = $sort WHERE Id = $id;";
+            cmd.CommandText = $"UPDATE {tbl.Tags} SET SortOrder = $sort WHERE Id = $id;";
             cmd.Parameters.AddWithValue("$sort", i);
             cmd.Parameters.AddWithValue("$id", orderedTagIds[i]);
             cmd.ExecuteNonQuery();
@@ -286,11 +321,12 @@ public static class TagRepository
         tx.Commit();
     }
 
-    public static void DeleteTag(long id)
+    public static void DeleteTag(long id, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Tags WHERE Id = $id;";
+        cmd.CommandText = $"DELETE FROM {tbl.Tags} WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
     }
@@ -314,13 +350,14 @@ public static class TagRepository
 
     // === ファイルエントリ（パス＋サイズ＋更新日時が識別キー） ===
 
-    public static long GetOrCreateFileEntry(string filePath, long fileSize, long lastModifiedTicks)
+    public static long GetOrCreateFileEntry(string filePath, long fileSize, long lastModifiedTicks, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
 
         using (var select = conn.CreateCommand())
         {
-            select.CommandText = "SELECT Id FROM FileEntries WHERE FilePath = $path AND FileSize = $size AND LastModifiedTicks = $ticks;";
+            select.CommandText = $"SELECT Id FROM {tbl.FileEntries} WHERE FilePath = $path AND FileSize = $size AND LastModifiedTicks = $ticks;";
             select.Parameters.AddWithValue("$path", filePath);
             select.Parameters.AddWithValue("$size", fileSize);
             select.Parameters.AddWithValue("$ticks", lastModifiedTicks);
@@ -329,18 +366,19 @@ public static class TagRepository
         }
 
         using var insert = conn.CreateCommand();
-        insert.CommandText = "INSERT INTO FileEntries (FilePath, FileSize, LastModifiedTicks) VALUES ($path, $size, $ticks); SELECT last_insert_rowid();";
+        insert.CommandText = $"INSERT INTO {tbl.FileEntries} (FilePath, FileSize, LastModifiedTicks) VALUES ($path, $size, $ticks); SELECT last_insert_rowid();";
         insert.Parameters.AddWithValue("$path", filePath);
         insert.Parameters.AddWithValue("$size", fileSize);
         insert.Parameters.AddWithValue("$ticks", lastModifiedTicks);
         return (long)insert.ExecuteScalar()!;
     }
 
-    public static FileEntry? FindFileEntry(string filePath, long fileSize, long lastModifiedTicks)
+    public static FileEntry? FindFileEntry(string filePath, long fileSize, long lastModifiedTicks, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, FilePath, FileSize, LastModifiedTicks, WorkTitle FROM FileEntries WHERE FilePath = $path AND FileSize = $size AND LastModifiedTicks = $ticks;";
+        cmd.CommandText = $"SELECT Id, FilePath, FileSize, LastModifiedTicks, WorkTitle FROM {tbl.FileEntries} WHERE FilePath = $path AND FileSize = $size AND LastModifiedTicks = $ticks;";
         cmd.Parameters.AddWithValue("$path", filePath);
         cmd.Parameters.AddWithValue("$size", fileSize);
         cmd.Parameters.AddWithValue("$ticks", lastModifiedTicks);
@@ -357,14 +395,15 @@ public static class TagRepository
     }
 
     /// <summary>タグが1つでも付いているFileEntriesの識別キー集合を返す（タグ未設定/設定済み検索用）。</summary>
-    public static HashSet<(string Path, long Size, long Ticks)> GetFileEntriesWithAnyTag()
+    public static HashSet<(string Path, long Size, long Ticks)> GetFileEntriesWithAnyTag(TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        cmd.CommandText = $"""
             SELECT DISTINCT fe.FilePath, fe.FileSize, fe.LastModifiedTicks
-            FROM FileEntries fe
-            JOIN FileTags ft ON ft.FileEntryId = fe.Id;
+            FROM {tbl.FileEntries} fe
+            JOIN {tbl.FileTags} ft ON ft.FileEntryId = fe.Id;
             """;
         using var reader = cmd.ExecuteReader();
         var result = new HashSet<(string, long, long)>();
@@ -374,11 +413,12 @@ public static class TagRepository
     }
 
     /// <summary>各タグが現在何件のファイルに付与されているかを返す（タグ選択UIでの件数表示用）。</summary>
-    public static Dictionary<long, int> GetTagUsageCounts()
+    public static Dictionary<long, int> GetTagUsageCounts(TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT TagId, COUNT(*) FROM FileTags GROUP BY TagId;";
+        cmd.CommandText = $"SELECT TagId, COUNT(*) FROM {tbl.FileTags} GROUP BY TagId;";
         using var reader = cmd.ExecuteReader();
         var result = new Dictionary<long, int>();
         while (reader.Read())
@@ -390,14 +430,15 @@ public static class TagRepository
     /// タグ条件（AND/OR）に一致するFileEntriesを識別キー付きで返す。タグ未指定なら全件を返す。
     /// 呼び出し側でディスク上の実在ファイル一覧と突き合わせて絞り込む想定（タグ検索の基礎データ）。
     /// </summary>
-    public static Dictionary<(string Path, long Size, long Ticks), string?> GetFileEntriesMatchingTags(IReadOnlyList<long> tagIds, bool matchAll)
+    public static Dictionary<(string Path, long Size, long Ticks), string?> GetFileEntriesMatchingTags(IReadOnlyList<long> tagIds, bool matchAll, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
 
         if (tagIds.Count == 0)
         {
-            cmd.CommandText = "SELECT FilePath, FileSize, LastModifiedTicks, WorkTitle FROM FileEntries;";
+            cmd.CommandText = $"SELECT FilePath, FileSize, LastModifiedTicks, WorkTitle FROM {tbl.FileEntries};";
         }
         else
         {
@@ -405,16 +446,16 @@ public static class TagRepository
             cmd.CommandText = matchAll
                 ? $"""
                     SELECT fe.FilePath, fe.FileSize, fe.LastModifiedTicks, fe.WorkTitle
-                    FROM FileEntries fe
-                    JOIN FileTags ft ON ft.FileEntryId = fe.Id
+                    FROM {tbl.FileEntries} fe
+                    JOIN {tbl.FileTags} ft ON ft.FileEntryId = fe.Id
                     WHERE ft.TagId IN ({placeholders})
                     GROUP BY fe.Id
                     HAVING COUNT(DISTINCT ft.TagId) = {tagIds.Count};
                     """
                 : $"""
                     SELECT DISTINCT fe.FilePath, fe.FileSize, fe.LastModifiedTicks, fe.WorkTitle
-                    FROM FileEntries fe
-                    JOIN FileTags ft ON ft.FileEntryId = fe.Id
+                    FROM {tbl.FileEntries} fe
+                    JOIN {tbl.FileTags} ft ON ft.FileEntryId = fe.Id
                     WHERE ft.TagId IN ({placeholders});
                     """;
             for (int i = 0; i < tagIds.Count; i++)
@@ -431,11 +472,33 @@ public static class TagRepository
         return result;
     }
 
-    public static void SetWorkTitle(long fileEntryId, string? workTitle)
+    /// <summary>
+    /// ファイル名変更・移動後、既存の識別キー（旧パス＋サイズ＋更新日時）に一致するFileEntriesのFilePathを更新する。
+    /// タグ・作品名はそのまま引き継がれる。該当するFileEntriesが無い（未タグ付けファイル）場合は何もしない。
+    /// newLastModifiedTicks: 移動時にファイルの更新日時も変更する場合、実際に書き込まれた新しい更新日時を渡す
+    /// （渡さなければ変更なしとみなし、識別キーのLastModifiedTicksはそのまま引き継ぐ＝単純なリネーム用）。
+    /// </summary>
+    public static void UpdateFileEntryPath(string oldPath, long fileSize, long lastModifiedTicks, string newPath,
+        TagDomain domain = TagDomain.Image, long? newLastModifiedTicks = null)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE FileEntries SET WorkTitle = $title WHERE Id = $id;";
+        cmd.CommandText = $"UPDATE {tbl.FileEntries} SET FilePath = $newPath, LastModifiedTicks = $newTicks WHERE FilePath = $oldPath AND FileSize = $size AND LastModifiedTicks = $ticks;";
+        cmd.Parameters.AddWithValue("$newPath", newPath);
+        cmd.Parameters.AddWithValue("$newTicks", newLastModifiedTicks ?? lastModifiedTicks);
+        cmd.Parameters.AddWithValue("$oldPath", oldPath);
+        cmd.Parameters.AddWithValue("$size", fileSize);
+        cmd.Parameters.AddWithValue("$ticks", lastModifiedTicks);
+        cmd.ExecuteNonQuery();
+    }
+
+    public static void SetWorkTitle(long fileEntryId, string? workTitle, TagDomain domain = TagDomain.Image)
+    {
+        var tbl = Tables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"UPDATE {tbl.FileEntries} SET WorkTitle = $title WHERE Id = $id;";
         cmd.Parameters.AddWithValue("$title", (object?)workTitle ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$id", fileEntryId);
         cmd.ExecuteNonQuery();
@@ -445,11 +508,12 @@ public static class TagRepository
     /// 識別キーに一致するFileEntriesを削除する（存在すれば）。FileTagsはON DELETE CASCADEで連動削除される。
     /// 削除フォルダへの移動時など、ファイルがもう存在しないものとして扱う場合に使う。
     /// </summary>
-    public static void DeleteFileEntryByIdentity(string filePath, long fileSize, long lastModifiedTicks)
+    public static void DeleteFileEntryByIdentity(string filePath, long fileSize, long lastModifiedTicks, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM FileEntries WHERE FilePath = $path AND FileSize = $size AND LastModifiedTicks = $ticks;";
+        cmd.CommandText = $"DELETE FROM {tbl.FileEntries} WHERE FilePath = $path AND FileSize = $size AND LastModifiedTicks = $ticks;";
         cmd.Parameters.AddWithValue("$path", filePath);
         cmd.Parameters.AddWithValue("$size", fileSize);
         cmd.Parameters.AddWithValue("$ticks", lastModifiedTicks);
@@ -458,16 +522,17 @@ public static class TagRepository
 
     // === ファイル⇔タグ紐付け ===
 
-    public static List<Tag> GetTagsForFile(long fileEntryId)
+    public static List<Tag> GetTagsForFile(long fileEntryId, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        cmd.CommandText = $"""
             SELECT t.Id, t.MinorCategoryId, t.Name, t.SortOrder, t.Color
-            FROM Tags t
-            JOIN FileTags ft ON ft.TagId = t.Id
-            LEFT JOIN MinorCategories mc ON mc.Id = t.MinorCategoryId
-            LEFT JOIN MajorCategories majc ON majc.Id = mc.MajorCategoryId
+            FROM {tbl.Tags} t
+            JOIN {tbl.FileTags} ft ON ft.TagId = t.Id
+            LEFT JOIN {tbl.Minor} mc ON mc.Id = t.MinorCategoryId
+            LEFT JOIN {tbl.Major} majc ON majc.Id = mc.MajorCategoryId
             WHERE ft.FileEntryId = $fileId
             ORDER BY
                 (majc.Id IS NULL), majc.SortOrder, majc.Name,
@@ -479,21 +544,23 @@ public static class TagRepository
         return ReadTags(reader);
     }
 
-    public static void AddFileTag(long fileEntryId, long tagId)
+    public static void AddFileTag(long fileEntryId, long tagId, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO FileTags (FileEntryId, TagId) VALUES ($fileId, $tagId);";
+        cmd.CommandText = $"INSERT OR IGNORE INTO {tbl.FileTags} (FileEntryId, TagId) VALUES ($fileId, $tagId);";
         cmd.Parameters.AddWithValue("$fileId", fileEntryId);
         cmd.Parameters.AddWithValue("$tagId", tagId);
         cmd.ExecuteNonQuery();
     }
 
-    public static void RemoveFileTag(long fileEntryId, long tagId)
+    public static void RemoveFileTag(long fileEntryId, long tagId, TagDomain domain = TagDomain.Image)
     {
+        var tbl = Tables(domain);
         using var conn = TagDatabaseService.CreateConnection();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM FileTags WHERE FileEntryId = $fileId AND TagId = $tagId;";
+        cmd.CommandText = $"DELETE FROM {tbl.FileTags} WHERE FileEntryId = $fileId AND TagId = $tagId;";
         cmd.Parameters.AddWithValue("$fileId", fileEntryId);
         cmd.Parameters.AddWithValue("$tagId", tagId);
         cmd.ExecuteNonQuery();

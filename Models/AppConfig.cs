@@ -122,4 +122,46 @@ public class AppState
 
     [JsonPropertyName("tag_search_has_title")]
     public bool TagSearchHasTitle { get; set; }
+
+    [JsonPropertyName("tag_video_source_folders")]
+    public List<string> TagVideoSourceFolders { get; set; } = [];
+
+    [JsonPropertyName("tag_video_disabled_folders")]
+    public List<string> TagVideoDisabledFolders { get; set; } = [];
+
+    [JsonPropertyName("tag_video_search_tag_ids")]
+    public List<long> TagVideoSearchTagIds { get; set; } = [];
+
+    [JsonPropertyName("tag_video_search_match_all")]
+    public bool TagVideoSearchMatchAll { get; set; }
+
+    [JsonPropertyName("tag_video_search_text")]
+    public string TagVideoSearchText { get; set; } = "";
+
+    [JsonPropertyName("tag_video_search_no_tags")]
+    public bool TagVideoSearchNoTags { get; set; }
+
+    [JsonPropertyName("tag_video_search_has_tags")]
+    public bool TagVideoSearchHasTags { get; set; }
+
+    [JsonPropertyName("tag_video_search_no_title")]
+    public bool TagVideoSearchNoTitle { get; set; }
+
+    [JsonPropertyName("tag_video_search_has_title")]
+    public bool TagVideoSearchHasTitle { get; set; }
+
+    [JsonPropertyName("tag_checklist_sort_by_usage")]
+    public bool TagChecklistSortByUsage { get; set; }
+
+    [JsonPropertyName("tag_move_folders")]
+    public List<string> TagMoveFolders { get; set; } = [];
+
+    [JsonPropertyName("tag_move_target_folder")]
+    public string? TagMoveTargetFolder { get; set; }
+
+    [JsonPropertyName("tag_video_move_folders")]
+    public List<string> TagVideoMoveFolders { get; set; } = [];
+
+    [JsonPropertyName("tag_video_move_target_folder")]
+    public string? TagVideoMoveTargetFolder { get; set; }
 }

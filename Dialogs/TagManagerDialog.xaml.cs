@@ -9,12 +9,14 @@ namespace ArchiveViewer.Dialogs;
 
 public partial class TagManagerDialog : Window
 {
+    private readonly TagDomain _domain;
     private System.Windows.Point _dragStartPoint;
     private ListBoxItem? _draggedItem;
 
-    public TagManagerDialog()
+    public TagManagerDialog(TagDomain domain = TagDomain.Image)
     {
         InitializeComponent();
+        _domain = domain;
         RefreshMajor();
     }
 
@@ -48,7 +50,7 @@ public partial class TagManagerDialog : Window
 
     private void RefreshMajor(long? selectId = null)
     {
-        var list = TagRepository.GetMajorCategories();
+        var list = TagRepository.GetMajorCategories(_domain);
         MajorList.Items.Clear();
         ListBoxItem? toSelect = null;
         foreach (var cat in list)
@@ -72,7 +74,7 @@ public partial class TagManagerDialog : Window
             RefreshTags();
             return;
         }
-        var list = TagRepository.GetMinorCategories(major.Id);
+        var list = TagRepository.GetMinorCategories(major.Id, _domain);
         ListBoxItem? toSelect = null;
         foreach (var cat in list)
         {
@@ -91,7 +93,7 @@ public partial class TagManagerDialog : Window
         var minor = SelectedMinor;
         TagList.Items.Clear();
         if (minor == null) return;
-        var list = TagRepository.GetTagsByMinorCategory(minor.Id);
+        var list = TagRepository.GetTagsByMinorCategory(minor.Id, _domain);
         ListBoxItem? toSelect = null;
         foreach (var tag in list)
         {
@@ -113,13 +115,13 @@ public partial class TagManagerDialog : Window
         var dlg = new InputDialog("大カテゴリ追加", "カテゴリ名:") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
-        var existing = TagRepository.GetMajorCategories();
+        var existing = TagRepository.GetMajorCategories(_domain);
         if (existing.Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "大カテゴリ追加");
             return;
         }
-        var id = TagRepository.AddMajorCategory(name, NextSortOrder(existing, c => c.SortOrder));
+        var id = TagRepository.AddMajorCategory(name, NextSortOrder(existing, c => c.SortOrder), _domain);
         RefreshMajor(id);
     }
 
@@ -132,7 +134,7 @@ public partial class TagManagerDialog : Window
         var name = TxtQuickAddMajor.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
 
-        var existing = TagRepository.GetMajorCategories();
+        var existing = TagRepository.GetMajorCategories(_domain);
         if (existing.Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "大カテゴリ追加");
@@ -140,7 +142,7 @@ public partial class TagManagerDialog : Window
         }
 
         var keepSelected = SelectedMajor?.Id;
-        TagRepository.AddMajorCategory(name, NextSortOrder(existing, c => c.SortOrder));
+        TagRepository.AddMajorCategory(name, NextSortOrder(existing, c => c.SortOrder), _domain);
         TxtQuickAddMajor.Clear();
         RefreshMajor(keepSelected);
         TxtQuickAddMajor.Focus();
@@ -154,12 +156,12 @@ public partial class TagManagerDialog : Window
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
         if (name == major.Name) return;
-        if (TagRepository.GetMajorCategories().Any(c => c.Name == name))
+        if (TagRepository.GetMajorCategories(_domain).Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "大カテゴリ名変更");
             return;
         }
-        TagRepository.RenameMajorCategory(major.Id, name);
+        TagRepository.RenameMajorCategory(major.Id, name, _domain);
         RefreshMajor(major.Id);
     }
 
@@ -169,7 +171,7 @@ public partial class TagManagerDialog : Window
         if (major == null) return;
         var dlg = new ColorPickerDialog(major.Color ?? Theme.ColorChoices[0]) { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        TagRepository.SetMajorCategoryColor(major.Id, dlg.SelectedColor);
+        TagRepository.SetMajorCategoryColor(major.Id, dlg.SelectedColor, _domain);
         RefreshMajor(major.Id);
     }
 
@@ -179,7 +181,7 @@ public partial class TagManagerDialog : Window
         if (major == null) return;
         if (MessageBox.Show($"大カテゴリ「{major.Name}」を削除しますか？\n（配下の中カテゴリも削除され、タグは未分類になります）", "確認", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
-        TagRepository.DeleteMajorCategory(major.Id);
+        TagRepository.DeleteMajorCategory(major.Id, _domain);
         RefreshMajor();
     }
 
@@ -196,15 +198,15 @@ public partial class TagManagerDialog : Window
         var dlg = new InputDialog("中カテゴリ追加", "カテゴリ名:") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
-        var existing = TagRepository.GetMinorCategories(major.Id);
+        var existing = TagRepository.GetMinorCategories(major.Id, _domain);
         if (existing.Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "中カテゴリ追加");
             return;
         }
-        var id = TagRepository.AddMinorCategory(major.Id, name, NextSortOrder(existing, c => c.SortOrder));
+        var id = TagRepository.AddMinorCategory(major.Id, name, NextSortOrder(existing, c => c.SortOrder), _domain);
         if (!string.IsNullOrEmpty(major.Color))
-            TagRepository.SetMinorCategoryColor(id, major.Color);
+            TagRepository.SetMinorCategoryColor(id, major.Color, _domain);
         RefreshMinor(id);
     }
 
@@ -224,7 +226,7 @@ public partial class TagManagerDialog : Window
         var name = TxtQuickAddMinor.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
 
-        var existing = TagRepository.GetMinorCategories(major.Id);
+        var existing = TagRepository.GetMinorCategories(major.Id, _domain);
         if (existing.Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "中カテゴリ追加");
@@ -232,9 +234,9 @@ public partial class TagManagerDialog : Window
         }
 
         var keepSelected = SelectedMinor?.Id;
-        var id = TagRepository.AddMinorCategory(major.Id, name, NextSortOrder(existing, c => c.SortOrder));
+        var id = TagRepository.AddMinorCategory(major.Id, name, NextSortOrder(existing, c => c.SortOrder), _domain);
         if (!string.IsNullOrEmpty(major.Color))
-            TagRepository.SetMinorCategoryColor(id, major.Color);
+            TagRepository.SetMinorCategoryColor(id, major.Color, _domain);
 
         TxtQuickAddMinor.Clear();
         RefreshMinor(keepSelected);
@@ -249,12 +251,12 @@ public partial class TagManagerDialog : Window
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
         if (name == minor.Name) return;
-        if (TagRepository.GetMinorCategories(minor.MajorCategoryId).Any(c => c.Name == name))
+        if (TagRepository.GetMinorCategories(minor.MajorCategoryId, _domain).Any(c => c.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "中カテゴリ名変更");
             return;
         }
-        TagRepository.RenameMinorCategory(minor.Id, name);
+        TagRepository.RenameMinorCategory(minor.Id, name, _domain);
         RefreshMinor(minor.Id);
     }
 
@@ -264,7 +266,7 @@ public partial class TagManagerDialog : Window
         if (minor == null) return;
         var dlg = new ColorPickerDialog(minor.Color ?? Theme.ColorChoices[0]) { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        TagRepository.SetMinorCategoryColor(minor.Id, dlg.SelectedColor);
+        TagRepository.SetMinorCategoryColor(minor.Id, dlg.SelectedColor, _domain);
         RefreshMinor(minor.Id);
     }
 
@@ -272,7 +274,7 @@ public partial class TagManagerDialog : Window
     {
         var minor = SelectedMinor;
         if (minor == null) return;
-        TagRepository.SetMinorCategoryRequired(minor.Id, !minor.IsRequired);
+        TagRepository.SetMinorCategoryRequired(minor.Id, !minor.IsRequired, _domain);
         RefreshMinor(minor.Id);
     }
 
@@ -282,7 +284,7 @@ public partial class TagManagerDialog : Window
         if (minor == null) return;
         if (MessageBox.Show($"中カテゴリ「{minor.Name}」を削除しますか？\n（配下のタグは未分類になります）", "確認", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
-        TagRepository.DeleteMinorCategory(minor.Id);
+        TagRepository.DeleteMinorCategory(minor.Id, _domain);
         RefreshMinor();
     }
 
@@ -299,15 +301,15 @@ public partial class TagManagerDialog : Window
         var dlg = new InputDialog("タグ追加", "タグ名:") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
-        if (TagRepository.GetAllTags().Any(t => t.Name == name))
+        if (TagRepository.GetAllTags(_domain).Any(t => t.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "タグ追加");
             return;
         }
-        var existing = TagRepository.GetTagsByMinorCategory(minor.Id);
-        var id = TagRepository.AddTag(name, minor.Id, NextSortOrder(existing, t => t.SortOrder));
+        var existing = TagRepository.GetTagsByMinorCategory(minor.Id, _domain);
+        var id = TagRepository.AddTag(name, minor.Id, NextSortOrder(existing, t => t.SortOrder), _domain);
         if (!string.IsNullOrEmpty(minor.Color))
-            TagRepository.SetTagColor(id, minor.Color);
+            TagRepository.SetTagColor(id, minor.Color, _domain);
         RefreshTags(id);
     }
 
@@ -327,16 +329,16 @@ public partial class TagManagerDialog : Window
         var name = TxtQuickAddTag.Text.Trim();
         if (string.IsNullOrEmpty(name)) return;
 
-        if (TagRepository.GetAllTags().Any(t => t.Name == name))
+        if (TagRepository.GetAllTags(_domain).Any(t => t.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "タグ追加");
             return;
         }
 
-        var existing = TagRepository.GetTagsByMinorCategory(minor.Id);
-        var id = TagRepository.AddTag(name, minor.Id, NextSortOrder(existing, t => t.SortOrder));
+        var existing = TagRepository.GetTagsByMinorCategory(minor.Id, _domain);
+        var id = TagRepository.AddTag(name, minor.Id, NextSortOrder(existing, t => t.SortOrder), _domain);
         if (!string.IsNullOrEmpty(minor.Color))
-            TagRepository.SetTagColor(id, minor.Color);
+            TagRepository.SetTagColor(id, minor.Color, _domain);
 
         TxtQuickAddTag.Clear();
         RefreshTags();
@@ -351,12 +353,12 @@ public partial class TagManagerDialog : Window
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
         if (name == tag.Name) return;
-        if (TagRepository.GetAllTags().Any(t => t.Name == name))
+        if (TagRepository.GetAllTags(_domain).Any(t => t.Name == name))
         {
             MessageBox.Show($"「{name}」は既に存在します。", "タグ名変更");
             return;
         }
-        TagRepository.RenameTag(tag.Id, name);
+        TagRepository.RenameTag(tag.Id, name, _domain);
         RefreshTags(tag.Id);
     }
 
@@ -366,7 +368,7 @@ public partial class TagManagerDialog : Window
         if (tag == null) return;
         var dlg = new ColorPickerDialog(tag.Color ?? Theme.ColorChoices[0]) { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        TagRepository.SetTagColor(tag.Id, dlg.SelectedColor);
+        TagRepository.SetTagColor(tag.Id, dlg.SelectedColor, _domain);
         RefreshTags(tag.Id);
     }
 
@@ -376,7 +378,7 @@ public partial class TagManagerDialog : Window
         if (tag == null) return;
         if (MessageBox.Show($"タグ「{tag.Name}」を削除しますか？\n（付与済みのファイルからも除去されます）", "確認", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
-        TagRepository.DeleteTag(tag.Id);
+        TagRepository.DeleteTag(tag.Id, _domain);
         RefreshTags();
     }
 
@@ -414,7 +416,7 @@ public partial class TagManagerDialog : Window
         if (targetItem == null || ReferenceEquals(targetItem, sourceItem)) return;
         if (sourceItem.Tag is not MajorCategory sourceCat || targetItem.Tag is not MajorCategory targetCat) return;
 
-        var orderedIds = TagRepository.GetMajorCategories().Select(c => c.Id).ToList();
+        var orderedIds = TagRepository.GetMajorCategories(_domain).Select(c => c.Id).ToList();
         var oldIndex = orderedIds.IndexOf(sourceCat.Id);
         var newIndex = orderedIds.IndexOf(targetCat.Id);
         if (oldIndex < 0 || newIndex < 0) return;
@@ -422,7 +424,7 @@ public partial class TagManagerDialog : Window
         orderedIds.RemoveAt(oldIndex);
         orderedIds.Insert(newIndex, sourceCat.Id);
 
-        TagRepository.SetMajorCategorySortOrders(orderedIds);
+        TagRepository.SetMajorCategorySortOrders(orderedIds, _domain);
         RefreshMajor(sourceCat.Id);
     }
 
@@ -436,7 +438,7 @@ public partial class TagManagerDialog : Window
         var major = SelectedMajor;
         if (major == null) return;
 
-        var orderedIds = TagRepository.GetMinorCategories(major.Id).Select(c => c.Id).ToList();
+        var orderedIds = TagRepository.GetMinorCategories(major.Id, _domain).Select(c => c.Id).ToList();
         var oldIndex = orderedIds.IndexOf(sourceCat.Id);
         var newIndex = orderedIds.IndexOf(targetCat.Id);
         if (oldIndex < 0 || newIndex < 0) return;
@@ -444,7 +446,7 @@ public partial class TagManagerDialog : Window
         orderedIds.RemoveAt(oldIndex);
         orderedIds.Insert(newIndex, sourceCat.Id);
 
-        TagRepository.SetMinorCategorySortOrders(orderedIds);
+        TagRepository.SetMinorCategorySortOrders(orderedIds, _domain);
         RefreshMinor(sourceCat.Id);
     }
 
@@ -458,7 +460,7 @@ public partial class TagManagerDialog : Window
         var minor = SelectedMinor;
         if (minor == null) return;
 
-        var orderedIds = TagRepository.GetTagsByMinorCategory(minor.Id).Select(t => t.Id).ToList();
+        var orderedIds = TagRepository.GetTagsByMinorCategory(minor.Id, _domain).Select(t => t.Id).ToList();
         var oldIndex = orderedIds.IndexOf(sourceTag.Id);
         var newIndex = orderedIds.IndexOf(targetTag.Id);
         if (oldIndex < 0 || newIndex < 0) return;
@@ -466,7 +468,7 @@ public partial class TagManagerDialog : Window
         orderedIds.RemoveAt(oldIndex);
         orderedIds.Insert(newIndex, sourceTag.Id);
 
-        TagRepository.SetTagSortOrders(orderedIds);
+        TagRepository.SetTagSortOrders(orderedIds, _domain);
         RefreshTags(sourceTag.Id);
     }
 

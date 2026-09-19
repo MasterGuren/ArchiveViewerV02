@@ -50,7 +50,10 @@ public static class TagDatabaseService
             EnsureSchema(connection);
             _initializedPaths.Add(path);
             if (CurrentMode == TagDbMode.Demo)
+            {
                 SeedDemoDataIfEmpty(connection);
+                SeedVideoDemoDataIfEmpty(connection);
+            }
         }
 
         return connection;
@@ -102,6 +105,50 @@ public static class TagDatabaseService
 
             CREATE INDEX IF NOT EXISTS idx_fileentries_path ON FileEntries(FilePath);
             CREATE INDEX IF NOT EXISTS idx_filetags_tag ON FileTags(TagId);
+
+            -- 動画用タグ体系（画像用とは語彙・データが完全に別）
+            CREATE TABLE IF NOT EXISTS VideoMajorCategories (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL UNIQUE,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                Color TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS VideoMinorCategories (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                MajorCategoryId INTEGER NOT NULL REFERENCES VideoMajorCategories(Id) ON DELETE CASCADE,
+                Name TEXT NOT NULL,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                Color TEXT,
+                IsRequired INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(MajorCategoryId, Name)
+            );
+
+            CREATE TABLE IF NOT EXISTS VideoTags (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                MinorCategoryId INTEGER REFERENCES VideoMinorCategories(Id) ON DELETE SET NULL,
+                Name TEXT NOT NULL UNIQUE,
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                Color TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS VideoFileEntries (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                FilePath TEXT NOT NULL,
+                FileSize INTEGER NOT NULL,
+                LastModifiedTicks INTEGER NOT NULL,
+                WorkTitle TEXT,
+                UNIQUE(FilePath, FileSize, LastModifiedTicks)
+            );
+
+            CREATE TABLE IF NOT EXISTS VideoFileTags (
+                FileEntryId INTEGER NOT NULL REFERENCES VideoFileEntries(Id) ON DELETE CASCADE,
+                TagId INTEGER NOT NULL REFERENCES VideoTags(Id) ON DELETE CASCADE,
+                PRIMARY KEY (FileEntryId, TagId)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_video_fileentries_path ON VideoFileEntries(FilePath);
+            CREATE INDEX IF NOT EXISTS idx_video_filetags_tag ON VideoFileTags(TagId);
             """;
         cmd.ExecuteNonQuery();
 
@@ -218,5 +265,65 @@ public static class TagDatabaseService
         var progress = InsertMinor(status, "進捗", 1, "#B0E0E6");
         InsertTag(progress, "完了", 0, "#008000");
         InsertTag(progress, "未整理", 1, "#A9A9A9");
+    }
+
+    /// <summary>
+    /// デモDBが空の場合のみ、動画用タグの動作確認用サンプルデータを投入する。本番DBには絶対に呼ばれない。
+    /// </summary>
+    private static void SeedVideoDemoDataIfEmpty(SqliteConnection connection)
+    {
+        using (var check = connection.CreateCommand())
+        {
+            check.CommandText = "SELECT COUNT(*) FROM VideoMajorCategories;";
+            if ((long)check.ExecuteScalar()! > 0) return;
+        }
+
+        long InsertMajor(string name, int sort, string color)
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO VideoMajorCategories (Name, SortOrder, Color) VALUES ($n, $s, $c); SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("$n", name);
+            cmd.Parameters.AddWithValue("$s", sort);
+            cmd.Parameters.AddWithValue("$c", color);
+            return (long)cmd.ExecuteScalar()!;
+        }
+
+        long InsertMinor(long majorId, string name, int sort, string color)
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO VideoMinorCategories (MajorCategoryId, Name, SortOrder, Color) VALUES ($m, $n, $s, $c); SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("$m", majorId);
+            cmd.Parameters.AddWithValue("$n", name);
+            cmd.Parameters.AddWithValue("$s", sort);
+            cmd.Parameters.AddWithValue("$c", color);
+            return (long)cmd.ExecuteScalar()!;
+        }
+
+        void InsertTag(long minorId, string name, int sort, string color)
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "INSERT INTO VideoTags (MinorCategoryId, Name, SortOrder, Color) VALUES ($m, $n, $s, $c);";
+            cmd.Parameters.AddWithValue("$m", minorId);
+            cmd.Parameters.AddWithValue("$n", name);
+            cmd.Parameters.AddWithValue("$s", sort);
+            cmd.Parameters.AddWithValue("$c", color);
+            cmd.ExecuteNonQuery();
+        }
+
+        var length = InsertMajor("尺", 0, "#4682B4");
+        var lengthMinor = InsertMinor(length, "長さ", 0, "#87CEEB");
+        InsertTag(lengthMinor, "短編", 0, "#B0E0E6");
+        InsertTag(lengthMinor, "長編", 1, "#4169E1");
+
+        var quality = InsertMajor("画質", 1, "#40E0D0");
+        var qualityMinor = InsertMinor(quality, "解像度", 0, "#3CB371");
+        InsertTag(qualityMinor, "HD", 0, "#00CED1");
+        InsertTag(qualityMinor, "FHD", 1, "#20B2AA");
+        InsertTag(qualityMinor, "4K", 2, "#008B8B");
+
+        var status = InsertMajor("状態", 2, "#008000");
+        var evaluation = InsertMinor(status, "評価", 0, "#FFD700");
+        InsertTag(evaluation, "お気に入り", 0, "#DC143C");
+        InsertTag(evaluation, "要確認", 1, "#FFFF00");
     }
 }

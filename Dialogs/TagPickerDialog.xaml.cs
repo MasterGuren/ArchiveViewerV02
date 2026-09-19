@@ -9,18 +9,21 @@ public partial class TagPickerDialog : Window
 {
     public HashSet<long> SelectedTagIds { get; }
     private readonly bool _enforceRequiredCategories;
+    private readonly TagDomain _domain;
 
     /// <summary>
     /// enforceRequiredCategories: trueの場合、必須指定された中カテゴリごとに最低1つタグを選ぶまでOKボタンを押せない。
     /// ファイルへのタグ付与では強制し、検索の絞り込み用ピッカーでは強制しない（部分的な絞り込みを妨げないため）。
     /// initialWidth/initialHeight: 前回リサイズしたサイズを呼び出し側から復元するための初期値（省略時はXAMLの既定値）。
+    /// domain: 画像用タグ/動画用タグのどちらを操作するか。
     /// </summary>
     public TagPickerDialog(IEnumerable<long> initiallySelected, bool enforceRequiredCategories = true,
-        double? initialWidth = null, double? initialHeight = null)
+        double? initialWidth = null, double? initialHeight = null, TagDomain domain = TagDomain.Image)
     {
         InitializeComponent();
         SelectedTagIds = [.. initiallySelected];
         _enforceRequiredCategories = enforceRequiredCategories;
+        _domain = domain;
         if (initialWidth.HasValue) Width = initialWidth.Value;
         if (initialHeight.HasValue) Height = initialHeight.Value;
         RefreshList();
@@ -50,21 +53,21 @@ public partial class TagPickerDialog : Window
     private void RefreshList()
     {
         ColumnsPanel.Children.Clear();
-        var usageCounts = TagRepository.GetTagUsageCounts();
+        var usageCounts = TagRepository.GetTagUsageCounts(_domain);
         var filter = TxtFilter.Text.Trim();
         var hasFilter = !string.IsNullOrEmpty(filter);
 
         var rows = new List<UIElement>();
 
-        foreach (var major in TagRepository.GetMajorCategories())
+        foreach (var major in TagRepository.GetMajorCategories(_domain))
         {
             var majorMatches = !hasFilter || Matches(major.Name, filter);
             var majorHeaderAdded = false;
 
-            foreach (var minor in TagRepository.GetMinorCategories(major.Id))
+            foreach (var minor in TagRepository.GetMinorCategories(major.Id, _domain))
             {
                 var minorMatches = majorMatches || Matches(minor.Name, filter);
-                var tags = TagRepository.GetTagsByMinorCategory(minor.Id);
+                var tags = TagRepository.GetTagsByMinorCategory(minor.Id, _domain);
                 var visibleTags = minorMatches ? tags : tags.Where(t => Matches(t.Name, filter)).ToList();
                 if (visibleTags.Count == 0) continue;
 
@@ -96,7 +99,7 @@ public partial class TagPickerDialog : Window
             }
         }
 
-        var uncategorized = TagRepository.GetAllTags().Where(t => t.MinorCategoryId == null).ToList();
+        var uncategorized = TagRepository.GetAllTags(_domain).Where(t => t.MinorCategoryId == null).ToList();
         var visibleUncategorized = hasFilter ? uncategorized.Where(t => Matches(t.Name, filter)).ToList() : uncategorized;
         if (visibleUncategorized.Count > 0)
         {
@@ -164,9 +167,9 @@ public partial class TagPickerDialog : Window
         }
 
         var missing = new List<string>();
-        foreach (var minor in TagRepository.GetRequiredMinorCategories())
+        foreach (var minor in TagRepository.GetRequiredMinorCategories(_domain))
         {
-            var tagIdsInMinor = TagRepository.GetTagsByMinorCategory(minor.Id).Select(t => t.Id).ToHashSet();
+            var tagIdsInMinor = TagRepository.GetTagsByMinorCategory(minor.Id, _domain).Select(t => t.Id).ToHashSet();
             if (!tagIdsInMinor.Overlaps(SelectedTagIds))
                 missing.Add(minor.Name);
         }
@@ -223,7 +226,7 @@ public partial class TagPickerDialog : Window
 
     private void BtnOpenTagManager_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new TagManagerDialog { Owner = this };
+        var dlg = new TagManagerDialog(_domain) { Owner = this };
         dlg.ShowDialog();
         RefreshList();
     }
