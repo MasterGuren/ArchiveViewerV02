@@ -44,6 +44,9 @@ public partial class MainWindow : Window
     // 左ペインのタグ一覧（チェックボックス）の並び順トグル。タグ閲覧/タグ動画で共通。
     private bool _tagChecklistSortByUsage;
 
+    // 右サイドバーのファイル一覧、タグ表示の折り返しあり/なし。タグ閲覧/タグ動画で共通。
+    private bool _tagFileListWrapTags = true;
+
     // 移動先フォルダ（複数登録し、ラジオボタンでどこへ移動するか選ぶ。タグ閲覧/タグ動画で別管理）
     private List<string> _tagMoveFolders = [];
     private string? _tagMoveTargetFolder;
@@ -160,6 +163,7 @@ public partial class MainWindow : Window
         _loadingConfig = false;
         TagDatabaseService.SetMode(_tagDbMode == "production" ? TagDbMode.Production : TagDbMode.Demo);
         UpdateTagDbModeButton();
+        ApplyTagFileListWrapSetting();
         SwitchMode(_config.State.LastMode);
         UpdateSortButtons();
         UpdateOrientButtons();
@@ -208,6 +212,7 @@ public partial class MainWindow : Window
         ChkSearchVideoHasTitle.IsChecked = _config.State.TagVideoSearchHasTitle;
 
         _tagChecklistSortByUsage = _config.State.TagChecklistSortByUsage;
+        _tagFileListWrapTags = _config.State.TagFileListWrapTags;
 
         _tagMoveFolders = _config.State.TagMoveFolders ?? [];
         _tagMoveTargetFolder = _config.State.TagMoveTargetFolder;
@@ -300,6 +305,7 @@ public partial class MainWindow : Window
         _config.State.TagVideoSearchNoTitle = ChkSearchVideoNoTitle.IsChecked == true;
         _config.State.TagVideoSearchHasTitle = ChkSearchVideoHasTitle.IsChecked == true;
         _config.State.TagChecklistSortByUsage = _tagChecklistSortByUsage;
+        _config.State.TagFileListWrapTags = _tagFileListWrapTags;
 
         _config.State.TagMoveFolders = _tagMoveFolders;
         _config.State.TagMoveTargetFolder = _tagMoveTargetFolder;
@@ -475,6 +481,7 @@ public partial class MainWindow : Window
         var scrollPos = SidebarScroller.VerticalOffset;
 
         LeftSidebar.Children.Clear();
+        BuildPinnedTagHeader();
 
         switch (_mode)
         {
@@ -792,66 +799,89 @@ public partial class MainWindow : Window
 
     // ======== TAG SIDEBAR ========
 
+    /// <summary>
+    /// タグ閲覧/タグ動画共通。「作業フォルダ」「作品名」をスクロールに追従しない左ペイン上部の固定領域に表示する。
+    /// CurrentTagFilePath/CurrentTagDomain経由でモードに応じた対象（_archivePath/_videoPath）を自動的に見る。
+    /// </summary>
+    private void BuildPinnedTagHeader()
+    {
+        LeftSidebarPinned.Children.Clear();
+
+        if (_mode != "tag" && _mode != "tagvideo")
+        {
+            LeftSidebarPinned.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var path = CurrentTagFilePath;
+        if (path == null)
+        {
+            LeftSidebarPinned.Visibility = Visibility.Collapsed;
+            return;
+        }
+        LeftSidebarPinned.Visibility = Visibility.Visible;
+
+        AddSidebarLabel("作業フォルダ", LeftSidebarPinned);
+        AddSidebarText(Path.GetDirectoryName(path) ?? "", LeftSidebarPinned);
+
+        var fileButtonRow = new UniformGrid { Columns = 3 };
+        var openFileLocationBtn = CreateSidebarButton("📂 開く", () => OpenCurrentFileLocationInExplorer());
+        openFileLocationBtn.Padding = new Thickness(2, 2, 2, 2);
+        openFileLocationBtn.Margin = new Thickness(0, 0, 2, 0);
+        fileButtonRow.Children.Add(openFileLocationBtn);
+        var renameFileBtn = CreateSidebarButton("✏ 名前変更", () => RenameCurrentTagFile());
+        renameFileBtn.Padding = new Thickness(2, 2, 2, 2);
+        renameFileBtn.Margin = new Thickness(2, 0, 2, 0);
+        fileButtonRow.Children.Add(renameFileBtn);
+        var deleteBtn = CreateSidebarButton("🗑 削除", () => DeleteCurrentTagFile(), "#7f1d1d");
+        deleteBtn.Padding = new Thickness(2, 2, 2, 2);
+        deleteBtn.Margin = new Thickness(2, 0, 0, 0);
+        fileButtonRow.Children.Add(deleteBtn);
+        LeftSidebarPinned.Children.Add(fileButtonRow);
+
+        AddSidebarSeparator(LeftSidebarPinned);
+
+        AddSidebarLabel("作品名", LeftSidebarPinned);
+        var titleBox = new System.Windows.Controls.TextBox
+        {
+            Text = GetCurrentWorkTitle() ?? "",
+            Background = Theme.PanelBrush,
+            Foreground = Theme.TextBrush,
+            CaretBrush = Theme.TextBrush,
+            BorderBrush = Theme.BorderBrush,
+            FontFamily = new FontFamily(Theme.FontFamily),
+            FontSize = 13,
+            Padding = new Thickness(4)
+        };
+        titleBox.LostFocus += (_, _) => SaveWorkTitleFromText(titleBox.Text);
+        titleBox.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            SaveWorkTitleFromText(titleBox.Text);
+            System.Windows.Input.Keyboard.ClearFocus();
+        };
+        LeftSidebarPinned.Children.Add(titleBox);
+
+        var searchWebRow = new UniformGrid { Columns = 2, Margin = new Thickness(0, 4, 0, 0) };
+        var searchByFileNameBtn = CreateSidebarButton("🔍 ファイル名", () => SearchWebByFileName());
+        searchByFileNameBtn.Padding = new Thickness(2, 2, 2, 2);
+        searchByFileNameBtn.Margin = new Thickness(0, 0, 2, 0);
+        searchByFileNameBtn.ToolTip = "Web検索（ファイル名）";
+        searchWebRow.Children.Add(searchByFileNameBtn);
+        var searchByWorkTitleBtn = CreateSidebarButton("🔍 作品名", () => SearchWebByWorkTitle());
+        searchByWorkTitleBtn.Padding = new Thickness(2, 2, 2, 2);
+        searchByWorkTitleBtn.Margin = new Thickness(2, 0, 0, 0);
+        searchByWorkTitleBtn.ToolTip = "Web検索（作品名）";
+        searchWebRow.Children.Add(searchByWorkTitleBtn);
+        LeftSidebarPinned.Children.Add(searchWebRow);
+
+        AddSidebarSeparator(LeftSidebarPinned);
+    }
+
     private void BuildTagSidebar()
     {
-        // Working folder
         if (_archivePath != null)
         {
-            AddSidebarLabel("作業フォルダ");
-            AddSidebarText(Path.GetDirectoryName(_archivePath) ?? "");
-            var openFileLocationBtn = CreateSidebarButton("📂 ファイルの場所を開く", () => OpenCurrentFileLocationInExplorer());
-            openFileLocationBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(openFileLocationBtn);
-
-            var renameFileBtn = CreateSidebarButton("✏ ファイル名を変更", () => RenameCurrentTagFile());
-            renameFileBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(renameFileBtn);
-
-            var moveFileBtn = CreateSidebarButton("📦 選択フォルダへ移動", () => MoveCurrentTagFile());
-            moveFileBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(moveFileBtn);
-
-            var deleteBtn = CreateSidebarButton("🗑 ゴミ箱へ移動", () => DeleteCurrentTagFile(), "#7f1d1d");
-            deleteBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(deleteBtn);
-            AddSidebarSeparator();
-
-            AddSidebarLabel("作品名");
-            var titleBox = new System.Windows.Controls.TextBox
-            {
-                Text = GetCurrentWorkTitle() ?? "",
-                Background = Theme.PanelBrush,
-                Foreground = Theme.TextBrush,
-                CaretBrush = Theme.TextBrush,
-                BorderBrush = Theme.BorderBrush,
-                FontFamily = new FontFamily(Theme.FontFamily),
-                FontSize = 13,
-                Padding = new Thickness(4)
-            };
-            titleBox.LostFocus += (_, _) => SaveWorkTitleFromText(titleBox.Text);
-            titleBox.KeyDown += (_, e) =>
-            {
-                if (e.Key != Key.Enter) return;
-                SaveWorkTitleFromText(titleBox.Text);
-                System.Windows.Input.Keyboard.ClearFocus();
-            };
-            LeftSidebar.Children.Add(titleBox);
-
-            var searchWebRow = new UniformGrid { Columns = 2, Margin = new Thickness(0, 4, 0, 0) };
-            var searchByFileNameBtn = CreateSidebarButton("🔍 ファイル名", () => SearchWebByFileName());
-            searchByFileNameBtn.Padding = new Thickness(2, 2, 2, 2);
-            searchByFileNameBtn.Margin = new Thickness(0, 0, 2, 0);
-            searchByFileNameBtn.ToolTip = "Web検索（ファイル名）";
-            searchWebRow.Children.Add(searchByFileNameBtn);
-            var searchByWorkTitleBtn = CreateSidebarButton("🔍 作品名", () => SearchWebByWorkTitle());
-            searchByWorkTitleBtn.Padding = new Thickness(2, 2, 2, 2);
-            searchByWorkTitleBtn.Margin = new Thickness(2, 0, 0, 0);
-            searchByWorkTitleBtn.ToolTip = "Web検索（作品名）";
-            searchWebRow.Children.Add(searchByWorkTitleBtn);
-            LeftSidebar.Children.Add(searchWebRow);
-
-            AddSidebarSeparator();
-
             AddSidebarLabel("タグ");
             var tagWrapPanel = new WrapPanel();
             foreach (var tag in GetCurrentFileTags())
@@ -981,61 +1011,6 @@ public partial class MainWindow : Window
     {
         if (_videoPath != null)
         {
-            AddSidebarLabel("再生中の動画");
-            AddSidebarText(Path.GetDirectoryName(_videoPath) ?? "");
-            var openFileLocationBtn = CreateSidebarButton("📂 ファイルの場所を開く", () => OpenCurrentFileLocationInExplorer());
-            openFileLocationBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(openFileLocationBtn);
-
-            var renameFileBtn = CreateSidebarButton("✏ ファイル名を変更", () => RenameCurrentTagFile());
-            renameFileBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(renameFileBtn);
-
-            var moveFileBtn = CreateSidebarButton("📦 選択フォルダへ移動", () => MoveCurrentTagFile());
-            moveFileBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(moveFileBtn);
-
-            var deleteBtn = CreateSidebarButton("🗑 ゴミ箱へ移動", () => DeleteCurrentTagFile(), "#7f1d1d");
-            deleteBtn.Margin = new Thickness(0, 4, 0, 0);
-            LeftSidebar.Children.Add(deleteBtn);
-            AddSidebarSeparator();
-
-            AddSidebarLabel("作品名");
-            var titleBox = new System.Windows.Controls.TextBox
-            {
-                Text = GetCurrentWorkTitle() ?? "",
-                Background = Theme.PanelBrush,
-                Foreground = Theme.TextBrush,
-                CaretBrush = Theme.TextBrush,
-                BorderBrush = Theme.BorderBrush,
-                FontFamily = new FontFamily(Theme.FontFamily),
-                FontSize = 13,
-                Padding = new Thickness(4)
-            };
-            titleBox.LostFocus += (_, _) => SaveWorkTitleFromText(titleBox.Text);
-            titleBox.KeyDown += (_, e) =>
-            {
-                if (e.Key != Key.Enter) return;
-                SaveWorkTitleFromText(titleBox.Text);
-                System.Windows.Input.Keyboard.ClearFocus();
-            };
-            LeftSidebar.Children.Add(titleBox);
-
-            var searchWebRow = new UniformGrid { Columns = 2, Margin = new Thickness(0, 4, 0, 0) };
-            var searchByFileNameBtn = CreateSidebarButton("🔍 ファイル名", () => SearchWebByFileName());
-            searchByFileNameBtn.Padding = new Thickness(2, 2, 2, 2);
-            searchByFileNameBtn.Margin = new Thickness(0, 0, 2, 0);
-            searchByFileNameBtn.ToolTip = "Web検索（ファイル名）";
-            searchWebRow.Children.Add(searchByFileNameBtn);
-            var searchByWorkTitleBtn = CreateSidebarButton("🔍 作品名", () => SearchWebByWorkTitle());
-            searchByWorkTitleBtn.Padding = new Thickness(2, 2, 2, 2);
-            searchByWorkTitleBtn.Margin = new Thickness(2, 0, 0, 0);
-            searchByWorkTitleBtn.ToolTip = "Web検索（作品名）";
-            searchWebRow.Children.Add(searchByWorkTitleBtn);
-            LeftSidebar.Children.Add(searchWebRow);
-
-            AddSidebarSeparator();
-
             AddSidebarLabel("タグ");
             var tagWrapPanel = new WrapPanel();
             foreach (var tag in GetCurrentFileTags())
@@ -1224,6 +1199,19 @@ public partial class MainWindow : Window
 
     private void BtnExecuteTagSearch_Click(object sender, RoutedEventArgs e) => ExecuteTagSearch();
 
+    private void BtnResetTagSearch_Click(object sender, RoutedEventArgs e)
+    {
+        _tagSearchTagIds = [];
+        TxtTagSearchText.Clear();
+        RbTagSearchOr.IsChecked = true;
+        ChkSearchNoTags.IsChecked = false;
+        ChkSearchHasTags.IsChecked = false;
+        ChkSearchNoTitle.IsChecked = false;
+        ChkSearchHasTitle.IsChecked = false;
+        RebuildTagSearchChips();
+        SaveStateOnly();
+    }
+
     /// <summary>「未設定」「設定済み」チェックボックスは同時に2つとも意味を持たないので、片方を付けたら他方を外す。</summary>
     private void TagFilterCheckbox_Click(object sender, RoutedEventArgs e)
     {
@@ -1320,6 +1308,19 @@ public partial class MainWindow : Window
     }
 
     private void BtnExecuteTagVideoSearch_Click(object sender, RoutedEventArgs e) => ExecuteTagVideoSearch();
+
+    private void BtnResetTagVideoSearch_Click(object sender, RoutedEventArgs e)
+    {
+        _tagVideoSearchTagIds = [];
+        TxtTagVideoSearchText.Clear();
+        RbTagVideoSearchOr.IsChecked = true;
+        ChkSearchVideoNoTags.IsChecked = false;
+        ChkSearchVideoHasTags.IsChecked = false;
+        ChkSearchVideoNoTitle.IsChecked = false;
+        ChkSearchVideoHasTitle.IsChecked = false;
+        RebuildTagVideoSearchChips();
+        SaveStateOnly();
+    }
 
     private void TagVideoFilterCheckbox_Click(object sender, RoutedEventArgs e)
     {
@@ -1476,6 +1477,15 @@ public partial class MainWindow : Window
     {
         public string FileName => System.IO.Path.GetFileName(Path);
 
+        public string FileSizeText
+        {
+            get
+            {
+                var identity = GetFileIdentity(Path);
+                return identity == null ? "" : FormatSize(identity.Value.Size);
+            }
+        }
+
         public string? WorkTitle
         {
             get
@@ -1549,7 +1559,14 @@ public partial class MainWindow : Window
         if (idx < 0 || idx >= _tagFileList.Count || idx == _tagFileIndex) return;
 
         _tagFileIndex = idx;
-        LoadArchive(_tagFileList[idx], keepViewer: _viewerOpen);
+        LoadArchive(_tagFileList[idx]); // ファイル一覧から選んだときはグリッド表示に戻す（ズーム状態を引き継がない）
+    }
+
+    private void BtnOpenTopTagFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tagFileList.Count == 0) return;
+        _tagFileIndex = 0;
+        LoadArchive(_tagFileList[0]); // 一覧からの選択はグリッド表示に戻す
     }
 
     /// <summary>
@@ -1860,6 +1877,15 @@ public partial class MainWindow : Window
     {
         public string FileName => System.IO.Path.GetFileName(Path);
 
+        public string FileSizeText
+        {
+            get
+            {
+                var identity = GetFileIdentity(Path);
+                return identity == null ? "" : FormatSize(identity.Value.Size);
+            }
+        }
+
         public string? WorkTitle
         {
             get
@@ -1922,6 +1948,41 @@ public partial class MainWindow : Window
 
         _tagVideoFileIndex = idx;
         PlayVideo(_tagVideoFileList[idx], trackSiblings: false);
+    }
+
+    private void BtnOpenTopTagVideoFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tagVideoFileList.Count == 0) return;
+        _tagVideoFileIndex = 0;
+        PlayVideo(_tagVideoFileList[0], trackSiblings: false);
+    }
+
+    private void BtnToggleTagWrap_Click(object sender, RoutedEventArgs e)
+    {
+        _tagFileListWrapTags = !_tagFileListWrapTags;
+        ApplyTagFileListWrapSetting();
+        SaveStateOnly();
+    }
+
+    private void BtnToggleTagVideoWrap_Click(object sender, RoutedEventArgs e) => BtnToggleTagWrap_Click(sender, e);
+
+    /// <summary>
+    /// タグ閲覧/タグ動画のファイル一覧で、タグ表示を折り返す/折り返さないを両方のListBoxに反映する。
+    /// 折り返さない場合はタグが1行に並ぶため、代わりに水平スクロールを有効にしてはみ出した分を見られるようにする。
+    /// </summary>
+    private void ApplyTagFileListWrapSetting()
+    {
+        var template = (DataTemplate)FindResource(_tagFileListWrapTags ? "TagListItemTemplateWrap" : "TagListItemTemplateNoWrap");
+        TagFileListPanel.ItemTemplate = template;
+        TagVideoFileListPanel.ItemTemplate = template;
+
+        var hsv = _tagFileListWrapTags ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+        ScrollViewer.SetHorizontalScrollBarVisibility(TagFileListPanel, hsv);
+        ScrollViewer.SetHorizontalScrollBarVisibility(TagVideoFileListPanel, hsv);
+
+        var label = _tagFileListWrapTags ? "↔ 折り返さない" : "↕ 折り返す";
+        BtnToggleTagWrap.Content = label;
+        BtnToggleTagVideoWrap.Content = label;
     }
 
     /// <summary>チェックが入っている（無効リストに無い）動画タグモードのソースフォルダを重複・親子関係を除去した上で返す。</summary>
@@ -2265,6 +2326,8 @@ public partial class MainWindow : Window
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(10, 3, 10, 3),
             VerticalAlignment = VerticalAlignment.Center,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = "クリックでこのタグだけで検索",
             Child = new TextBlock
             {
                 Text = tag.Name,
@@ -2273,8 +2336,28 @@ public partial class MainWindow : Window
                 FontSize = 13
             }
         };
+        pill.MouseLeftButtonUp += (_, _) => SearchByTagOnly(tag.Id);
         row.Children.Add(pill);
         return row;
+    }
+
+    /// <summary>左ペインの設定済みタグをクリックしたとき、そのタグ1つだけの検索条件に置き換えて検索を実行する。</summary>
+    private void SearchByTagOnly(long tagId)
+    {
+        if (_mode == "tagvideo")
+        {
+            _tagVideoSearchTagIds = [tagId];
+            RebuildTagVideoSearchChips();
+            SaveStateOnly();
+            ExecuteTagVideoSearch();
+        }
+        else
+        {
+            _tagSearchTagIds = [tagId];
+            RebuildTagSearchChips();
+            SaveStateOnly();
+            ExecuteTagSearch();
+        }
     }
 
     /// <summary>ダイアログを開かずに左ペイン上でタグの付け外しができるよう、全タグをカテゴリ別チェックボックスで並べる。
@@ -2339,6 +2422,8 @@ public partial class MainWindow : Window
             };
             checkBox.Checked += (_, _) => ToggleCurrentFileTag(tag.Id, true);
             checkBox.Unchecked += (_, _) => ToggleCurrentFileTag(tag.Id, false);
+            checkBox.ToolTip = "右クリックで名前変更";
+            checkBox.MouseRightButtonUp += (_, e) => { RenameTagFromChecklist(tag); e.Handled = true; };
             return checkBox;
         }
 
@@ -2348,10 +2433,37 @@ public partial class MainWindow : Window
             var ordered = _tagChecklistSortByUsage
                 ? tags.OrderByDescending(t => usageCounts.GetValueOrDefault(t.Id)).ThenBy(t => t.SortOrder).ThenBy(t => t.Name)
                 : tags.AsEnumerable();
-            var grid = new UniformGrid { Columns = 2, Margin = new Thickness(indent, 0, 0, 0) };
+            var grid = new UniformGrid { Columns = 2 };
             foreach (var tag in ordered)
                 grid.Children.Add(BuildCheckbox(tag));
-            LeftSidebar.Children.Add(grid);
+
+            // タグ数が多いカテゴリは、左ペイン全体を占領しないようカテゴリ内だけ縦スクロールにする。
+            // 常にScrollViewer(MaxHeight指定)でラップし、実際の描画高さがしきい値を超えた場合のみ
+            // Autoでスクロールバーが自動的に出る方式にする（行数×見積もり行高の事前計算だと実際の描画サイズと
+            // ずれてスクロールが出ない/出すぎるため、WPFのレイアウトに実測させたほうが確実）。
+            const int maxRowsBeforeScroll = 20;
+            const double rowHeight = 26;
+            var scroller = new ScrollViewer
+            {
+                MaxHeight = maxRowsBeforeScroll * rowHeight,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Margin = new Thickness(indent, 0, 0, 0),
+                Content = grid
+            };
+            // カテゴリ内スクロールが上端/下端に達したら、そこから先は左ペイン全体のスクロールに委ねる
+            // （既定のScrollViewerはPreviewMouseWheelを内部で処理してしまい端でも外側へバブルしないため手動で行う）
+            scroller.PreviewMouseWheel += (_, e) =>
+            {
+                bool atTop = e.Delta > 0 && scroller.VerticalOffset <= 0.5;
+                bool atBottom = e.Delta < 0 && scroller.VerticalOffset >= scroller.ScrollableHeight - 0.5;
+                if (atTop || atBottom)
+                {
+                    e.Handled = true;
+                    SidebarScroller.ScrollToVerticalOffset(SidebarScroller.VerticalOffset - e.Delta);
+                }
+            };
+            LeftSidebar.Children.Add(scroller);
         }
 
         foreach (var major in TagRepository.GetMajorCategories(CurrentTagDomain))
@@ -2413,20 +2525,49 @@ public partial class MainWindow : Window
         var dlg = new Dialogs.InputDialog("タグ追加", $"「{minor.Name}」に追加するタグ名:") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
         var name = dlg.InputText.Trim();
-        if (TagRepository.GetAllTags(CurrentTagDomain).Any(t => t.Name == name))
+
+        var domain = CurrentTagDomain;
+        var existingTag = TagRepository.GetAllTags(domain).FirstOrDefault(t => t.Name == name);
+        if (existingTag != null)
         {
-            System.Windows.MessageBox.Show($"「{name}」は既に存在します。", "タグ追加");
+            var existingCategoryName = existingTag.MinorCategoryId is long minorId
+                ? TagRepository.GetMinorCategoryById(minorId, domain)?.Name ?? "不明なカテゴリ"
+                : "未分類";
+            new Dialogs.ConfirmDialog(
+                $"「{name}」は既に「{existingCategoryName}」カテゴリにあります。\nそちらのタグを設定します。",
+                "タグ追加", okOnly: true) { Owner = this }.ShowDialog();
+
+            ToggleCurrentFileTag(existingTag.Id, true);
             return;
         }
 
-        var existing = TagRepository.GetTagsByMinorCategory(minor.Id, CurrentTagDomain);
+        var existing = TagRepository.GetTagsByMinorCategory(minor.Id, domain);
         var sortOrder = existing.Count == 0 ? 0 : existing.Max(t => t.SortOrder) + 1;
-        var id = TagRepository.AddTag(name, minor.Id, sortOrder, CurrentTagDomain);
+        var id = TagRepository.AddTag(name, minor.Id, sortOrder, domain);
         if (!string.IsNullOrEmpty(minor.Color))
-            TagRepository.SetTagColor(id, minor.Color, CurrentTagDomain);
+            TagRepository.SetTagColor(id, minor.Color, domain);
 
         // 左ペインから追加したタグは、今開いているファイルにそのまま付与する
         ToggleCurrentFileTag(id, true);
+    }
+
+    /// <summary>左ペインのタグ一覧を右クリックしたとき、そのタグの名前変更ダイアログを開く。</summary>
+    private void RenameTagFromChecklist(Tag tag)
+    {
+        var domain = CurrentTagDomain;
+        var dlg = new Dialogs.InputDialog("タグ名変更", "新しい名前:", tag.Name) { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.InputText)) return;
+        var name = dlg.InputText.Trim();
+        if (name == tag.Name) return;
+
+        if (TagRepository.GetAllTags(domain).Any(t => t.Name == name))
+        {
+            new Dialogs.ConfirmDialog($"「{name}」は既に存在します。", "タグ名変更", okOnly: true) { Owner = this }.ShowDialog();
+            return;
+        }
+
+        TagRepository.RenameTag(tag.Id, name, domain);
+        RebuildSidebar();
     }
 
     private void ToggleCurrentFileTag(long tagId, bool add)
@@ -2497,6 +2638,13 @@ public partial class MainWindow : Window
     {
         AddSidebarSeparator();
         AddSidebarLabel("移動先フォルダ（選択して📦移動）");
+
+        if (CurrentTagFilePath != null)
+        {
+            var moveFileBtn = CreateSidebarButton("📦 選択フォルダへ移動", () => MoveCurrentTagFile());
+            moveFileBtn.Margin = new Thickness(0, 0, 0, 4);
+            LeftSidebar.Children.Add(moveFileBtn);
+        }
 
         foreach (var folder in folders)
         {
@@ -3477,9 +3625,9 @@ public partial class MainWindow : Window
     }
 
     // Sidebar helpers
-    private void AddSidebarLabel(string text)
+    private void AddSidebarLabel(string text, System.Windows.Controls.Panel? target = null)
     {
-        LeftSidebar.Children.Add(new TextBlock
+        (target ?? LeftSidebar).Children.Add(new TextBlock
         {
             Text = text,
             Foreground = Theme.TextBrush,
@@ -3490,9 +3638,9 @@ public partial class MainWindow : Window
         });
     }
 
-    private void AddSidebarText(string text)
+    private void AddSidebarText(string text, System.Windows.Controls.Panel? target = null)
     {
-        LeftSidebar.Children.Add(new TextBlock
+        (target ?? LeftSidebar).Children.Add(new TextBlock
         {
             Text = text,
             Foreground = Theme.SubtextBrush,
@@ -3503,9 +3651,9 @@ public partial class MainWindow : Window
         });
     }
 
-    private void AddSidebarSeparator()
+    private void AddSidebarSeparator(System.Windows.Controls.Panel? target = null)
     {
-        LeftSidebar.Children.Add(new Border
+        (target ?? LeftSidebar).Children.Add(new Border
         {
             Height = 1,
             Background = Theme.BorderBrush,

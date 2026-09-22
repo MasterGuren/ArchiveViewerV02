@@ -90,6 +90,86 @@
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Padding" Value="4,2"/>
         </Style>
+
+        <!-- タグ閲覧/タグ動画の右サイドバー・ファイル一覧の行の共通スタイル。選択色に加えて偶数/奇数行で背景を変え、境目を分かりやすくする。 -->
+        <Style x:Key="TagListItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="{Binding Path}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="border" Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                <Setter TargetName="border" Property="Background" Value="#40808080"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- タグ閲覧/タグ動画の右サイドバー・ファイル一覧の行テンプレート。タグ部分の折り返しあり/なしを切り替えられるよう2種類用意する。 -->
+        <DataTemplate x:Key="TagListItemTemplateWrap">
+            <StackPanel>
+                <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"
+                           TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                    <TextBlock Text="{Binding FileSizeText}"
+                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                    <TextBlock Text="{Binding WorkTitle}" Visibility="{Binding WorkTitleVisibility}"
+                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11" Margin="6,0,0,0"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
+                                <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="TagListItemTemplateNoWrap">
+            <StackPanel>
+                <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"
+                           TextTrimming="CharacterEllipsis"/>
+                <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                    <TextBlock Text="{Binding FileSizeText}"
+                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                    <TextBlock Text="{Binding WorkTitle}" Visibility="{Binding WorkTitleVisibility}"
+                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11" Margin="6,0,0,0"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
+                                <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -200,9 +280,12 @@
 
             <!-- LEFT SIDEBAR -->
             <Border Grid.Column="0" Background="{DynamicResource ThemePanel}" BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,1,0">
-                <ScrollViewer x:Name="SidebarScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="LeftSidebar" Margin="12"/>
-                </ScrollViewer>
+                <DockPanel>
+                    <StackPanel x:Name="LeftSidebarPinned" DockPanel.Dock="Top" Margin="12,12,12,0" Visibility="Collapsed"/>
+                    <ScrollViewer x:Name="SidebarScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="LeftSidebar" Margin="12"/>
+                    </ScrollViewer>
+                </DockPanel>
             </Border>
 
             <!-- MAIN AREA -->
@@ -413,67 +496,39 @@
                                           Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"/>
                             </StackPanel>
 
-                            <Button Content="🔍 検索実行" Click="BtnExecuteTagSearch_Click" Padding="4"
-                                    Style="{StaticResource AccentButton}"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="🔍 検索実行" Click="BtnExecuteTagSearch_Click" Padding="4"
+                                        Style="{StaticResource AccentButton}"/>
+                                <Button Grid.Column="1" Content="🔄 リセット" Click="BtnResetTagSearch_Click" Padding="6,4" Margin="6,0,0,0"
+                                        Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            </Grid>
                         </StackPanel>
 
                         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorder}" Margin="0,0,0,8"/>
 
-                        <TextBlock x:Name="TxtTagFileListHeader" DockPanel.Dock="Top" Text="ファイル一覧"
-                                   Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
-                                   FontWeight="Bold" Margin="0,0,0,8"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <Button DockPanel.Dock="Right" Content="▶ 先頭を開く" Click="BtnOpenTopTagFile_Click" Padding="4,2" FontSize="11"
+                                    Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            <Button x:Name="BtnToggleTagWrap" DockPanel.Dock="Right" Click="BtnToggleTagWrap_Click" Padding="4,2" FontSize="11" Margin="0,0,4,0"
+                                    Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            <TextBlock x:Name="TxtTagFileListHeader" Text="ファイル一覧" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
+                                       FontWeight="Bold"/>
+                        </DockPanel>
                         <ListBox x:Name="TagFileListPanel" Background="Transparent" BorderThickness="0"
                                  Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"
                                  ScrollViewer.CanContentScroll="True"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  VirtualizingPanel.IsVirtualizing="True"
                                  VirtualizingPanel.VirtualizationMode="Recycling"
-                                 SelectionChanged="TagFileListPanel_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"/>
-                                        <TextBlock Text="{Binding WorkTitle}" Visibility="{Binding WorkTitleVisibility}"
-                                                   Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11" Margin="0,1,0,0"/>
-                                        <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
-                                                        <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem">
-                                    <Setter Property="Padding" Value="6,4"/>
-                                    <Setter Property="Cursor" Value="Hand"/>
-                                    <Setter Property="ToolTip" Value="{Binding Path}"/>
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ListBoxItem">
-                                                <Border x:Name="border" Background="Transparent" Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeAccent}"/>
-                                                        <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                        </ListBox>
+                                 ItemTemplate="{StaticResource TagListItemTemplateWrap}"
+                                 ItemContainerStyle="{StaticResource TagListItemContainerStyle}"
+                                 AlternationCount="2"
+                                 SelectionChanged="TagFileListPanel_SelectionChanged"/>
                     </DockPanel>
 
                     <DockPanel x:Name="TagVideoRightSidebarContent" Margin="12" Visibility="Collapsed">
@@ -513,67 +568,39 @@
                                           Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"/>
                             </StackPanel>
 
-                            <Button Content="🔍 検索実行" Click="BtnExecuteTagVideoSearch_Click" Padding="4"
-                                    Style="{StaticResource AccentButton}"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="🔍 検索実行" Click="BtnExecuteTagVideoSearch_Click" Padding="4"
+                                        Style="{StaticResource AccentButton}"/>
+                                <Button Grid.Column="1" Content="🔄 リセット" Click="BtnResetTagVideoSearch_Click" Padding="6,4" Margin="6,0,0,0"
+                                        Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            </Grid>
                         </StackPanel>
 
                         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorder}" Margin="0,0,0,8"/>
 
-                        <TextBlock x:Name="TxtTagVideoFileListHeader" DockPanel.Dock="Top" Text="ファイル一覧"
-                                   Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
-                                   FontWeight="Bold" Margin="0,0,0,8"/>
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <Button DockPanel.Dock="Right" Content="▶ 先頭を開く" Click="BtnOpenTopTagVideoFile_Click" Padding="4,2" FontSize="11"
+                                    Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            <Button x:Name="BtnToggleTagVideoWrap" DockPanel.Dock="Right" Click="BtnToggleTagVideoWrap_Click" Padding="4,2" FontSize="11" Margin="0,0,4,0"
+                                    Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
+                            <TextBlock x:Name="TxtTagVideoFileListHeader" Text="ファイル一覧" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
+                                       FontWeight="Bold"/>
+                        </DockPanel>
                         <ListBox x:Name="TagVideoFileListPanel" Background="Transparent" BorderThickness="0"
                                  Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"
                                  ScrollViewer.CanContentScroll="True"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  VirtualizingPanel.IsVirtualizing="True"
                                  VirtualizingPanel.VirtualizationMode="Recycling"
-                                 SelectionChanged="TagVideoFileListPanel_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"/>
-                                        <TextBlock Text="{Binding WorkTitle}" Visibility="{Binding WorkTitleVisibility}"
-                                                   Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11" Margin="0,1,0,0"/>
-                                        <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
-                                                        <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem">
-                                    <Setter Property="Padding" Value="6,4"/>
-                                    <Setter Property="Cursor" Value="Hand"/>
-                                    <Setter Property="ToolTip" Value="{Binding Path}"/>
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ListBoxItem">
-                                                <Border x:Name="border" Background="Transparent" Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeAccent}"/>
-                                                        <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                        </ListBox>
+                                 ItemTemplate="{StaticResource TagListItemTemplateWrap}"
+                                 ItemContainerStyle="{StaticResource TagListItemContainerStyle}"
+                                 AlternationCount="2"
+                                 SelectionChanged="TagVideoFileListPanel_SelectionChanged"/>
                     </DockPanel>
                 </Grid>
             </Border>

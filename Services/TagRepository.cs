@@ -134,6 +134,27 @@ public static class TagRepository
         return result;
     }
 
+    /// <summary>単一の中カテゴリをIdで取得する（既存タグがどのカテゴリに属するか表示する用途など）。</summary>
+    public static MinorCategory? GetMinorCategoryById(long id, TagDomain domain = TagDomain.Image)
+    {
+        var tbl = Tables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT Id, MajorCategoryId, Name, SortOrder, Color, IsRequired FROM {tbl.Minor} WHERE Id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+        return new MinorCategory
+        {
+            Id = reader.GetInt64(0),
+            MajorCategoryId = reader.GetInt64(1),
+            Name = reader.GetString(2),
+            SortOrder = reader.GetInt32(3),
+            Color = reader.IsDBNull(4) ? null : reader.GetString(4),
+            IsRequired = reader.GetInt64(5) != 0
+        };
+    }
+
     public static void SetMinorCategoryRequired(long id, bool isRequired, TagDomain domain = TagDomain.Image)
     {
         var tbl = Tables(domain);

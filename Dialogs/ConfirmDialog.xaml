@@ -9,7 +9,7 @@
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
             <Button x:Name="BtnYes" Content="はい" Width="80" Padding="4" Margin="0,0,8,0" Click="BtnYes_Click" IsDefault="True"
                     Background="{DynamicResource ThemeAccent}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
-            <Button Content="いいえ" Width="80" Padding="4" Click="BtnNo_Click" IsCancel="True"
+            <Button x:Name="BtnNo" Content="いいえ" Width="80" Padding="4" Click="BtnNo_Click" IsCancel="True"
                     Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
         </StackPanel>
     </StackPanel>

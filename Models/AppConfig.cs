@@ -164,4 +164,7 @@ public class AppState
 
     [JsonPropertyName("tag_video_move_target_folder")]
     public string? TagVideoMoveTargetFolder { get; set; }
+
+    [JsonPropertyName("tag_file_list_wrap_tags")]
+    public bool TagFileListWrapTags { get; set; } = true;
 }

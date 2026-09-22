@@ -4,11 +4,17 @@ namespace ArchiveViewer.Dialogs;
 
 public partial class ConfirmDialog : Window
 {
-    public ConfirmDialog(string message, string title = "確認")
+    /// <summary>okOnly: trueの場合「いいえ」ボタンを隠し、「はい」を「OK」にした案内専用ダイアログにする。</summary>
+    public ConfirmDialog(string message, string title = "確認", bool okOnly = false)
     {
         InitializeComponent();
         Title = title;
         MessageText.Text = message;
+        if (okOnly)
+        {
+            BtnYes.Content = "OK";
+            BtnNo.Visibility = Visibility.Collapsed;
+        }
         BtnYes.Focus();
     }
 
