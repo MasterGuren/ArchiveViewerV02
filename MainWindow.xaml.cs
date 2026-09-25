@@ -106,6 +106,9 @@ public partial class MainWindow : Window
     private List<string> _videoFiles = [];
     private int _currentVideoIndex = -1;
     private LibVLC? _libVlc;
+    // libVLCの初期化（本体DLLとプラグインの読み込み）だけで1秒前後かかるため、初回再生時ではなく
+    // 起動直後から裏で走らせる。生成済みTaskを保持して、再生側はこれをawaitするだけにする。
+    private Task<LibVLC>? _libVlcInit;
     private LibVLCSharp.Shared.MediaPlayer? _vlcPlayer;
     private DispatcherTimer? _videoTimer;
     private bool _seekDragging;
@@ -188,6 +191,8 @@ public partial class MainWindow : Window
         UpdateVideoEndActionButtons();
         UpdateVideoScrollButtons();
 
+        // 初回再生の待ち時間をなくすため、libVLCの初期化を起動直後から裏で走らせておく
+        _ = EnsureLibVlcAsync();
     }
 
     private void LoadConfigToState()
@@ -6151,14 +6156,8 @@ public partial class MainWindow : Window
 
         try
         {
-            await Task.Run(() =>
-            {
-                if (_libVlc == null)
-                {
-                    Core.Initialize();
-                    _libVlc = new LibVLC("--no-xlib", "--quiet", "--no-video-title-show");
-                }
-            });
+            // 起動時に走らせた初期化Taskを待つだけ。通常は既に完了しているので即座に進む。
+            _libVlc = await EnsureLibVlcAsync();
 
             _vlcPlayer = new LibVLCSharp.Shared.MediaPlayer(_libVlc!);
             _vlcPlayer.Volume = _videoVolume;
@@ -6234,10 +6233,27 @@ public partial class MainWindow : Window
         DestroyVideoView();
     }
 
+    /// <summary>
+    /// libVLCの初期化を1度だけ行い、そのTaskを共有する。起動時に呼んで裏で進めておき、
+    /// 再生側は同じTaskをawaitする。UIスレッドからのみ呼ぶ前提なので競合しない。
+    /// </summary>
+    private Task<LibVLC> EnsureLibVlcAsync()
+    {
+        return _libVlcInit ??= Task.Run(() =>
+        {
+            Core.Initialize();
+            return new LibVLC("--no-xlib", "--quiet", "--no-video-title-show");
+        });
+    }
+
     private void CreateVideoView()
     {
         if (_videoView != null) return;
         _videoView = new LibVLCSharp.WPF.VideoView { Background = System.Windows.Media.Brushes.Black };
+        // LibVLCSharp.WPFのVideoViewはWPF要素ではなくCreateWindowExで作った生HWNDに描画するため、
+        // 上のBackground（WPF側）はHWNDに覆われて効かない。HWNDのクラス背景ブラシが既定で白なので、
+        // libVLCが最初のフレームを描くまでの間や再描画時に白が見えてしまう。黒に差し替えておく。
+        _videoView.Loaded += VideoView_Loaded;
         // Airspace overlay for mouse events
         var overlay = new Grid { Background = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromArgb(1, 0, 0, 0)) };
@@ -6255,9 +6271,77 @@ public partial class MainWindow : Window
     private void DestroyVideoView()
     {
         if (_videoView == null) return;
+        _videoView.Loaded -= VideoView_Loaded;
         VideoViewHost.Children.Remove(_videoView);
         _videoView.Dispose();
         _videoView = null;
+    }
+
+    // 動画HWNDの背景を黒にする（白の出所。詳細はCreateVideoViewのコメント）
+    private const int GclpHbrBackground = -10;
+    private const int StockBlackBrush = 4;
+    private static bool _videoHwndClassPainted;
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr GetStockObject(int fnObject);
+
+    [DllImport("user32.dll", EntryPoint = "SetClassLongPtrW")]
+    private static extern IntPtr SetClassLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "SetClassLongW")]
+    private static extern uint SetClassLong32(IntPtr hWnd, int nIndex, uint dwNewLong);
+
+    private void VideoView_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Loaded時点でまだHwndHostがツリーに現れていない場合があるので、取れなければ一度だけ
+        // レイアウト後に再試行する
+        if (!TryPaintVideoHwndBlack())
+            Dispatcher.BeginInvoke(new Action(() => TryPaintVideoHwndBlack()), DispatcherPriority.Loaded);
+    }
+
+    private bool TryPaintVideoHwndBlack()
+    {
+        // 背景ブラシはウィンドウクラス単位なので、一度差し替えれば以降のVideoViewにも効く
+        if (_videoHwndClassPainted) return true;
+        if (_videoView == null) return false;
+        try
+        {
+            var hwnd = FindHwndHostHandle(_videoView);
+            if (hwnd == IntPtr.Zero) return false;
+
+            var black = GetStockObject(StockBlackBrush);
+            if (black == IntPtr.Zero) return false;
+
+            if (IntPtr.Size == 8)
+                SetClassLongPtr64(hwnd, GclpHbrBackground, black);
+            else
+                SetClassLong32(hwnd, GclpHbrBackground, (uint)black.ToInt32());
+
+            _videoHwndClassPainted = true;
+            return true;
+        }
+        catch
+        {
+            // 取れなくても再生自体には影響しないので黙って諦める（白が残るだけ）
+            return false;
+        }
+    }
+
+    private static IntPtr FindHwndHostHandle(DependencyObject root)
+    {
+        if (root is System.Windows.Interop.HwndHost host)
+        {
+            try { return host.Handle; }
+            catch { return IntPtr.Zero; }
+        }
+
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var found = FindHwndHostHandle(VisualTreeHelper.GetChild(root, i));
+            if (found != IntPtr.Zero) return found;
+        }
+        return IntPtr.Zero;
     }
 
     private string? _lastVideoDirCache;

@@ -325,7 +325,10 @@
                                FontFamily="Yu Gothic UI" FontSize="14" HorizontalAlignment="Center" Margin="0,8,0,0"/>
                 </StackPanel>
 
-                <Border x:Name="ProgressOverlay" Background="{DynamicResource ThemeBgOverlay}" Visibility="Collapsed">
+                <!-- ZIndexで最前面に固定する。宣言順だけだとViewerOverlay/VideoOverlayの裏に回り、
+                     ビューアーを開いたままの切り替えや動画の読み込み中に進捗が一切見えなくなる。 -->
+                <Border x:Name="ProgressOverlay" Panel.ZIndex="10"
+                        Background="{DynamicResource ThemeBgOverlay}" Visibility="Collapsed">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <ProgressBar x:Name="LoadProgress" Width="300" Height="20" Minimum="0" Maximum="100"
                                      Foreground="{DynamicResource ThemeAccent}" Background="{DynamicResource ThemePanel}"/>
@@ -372,7 +375,8 @@
                 </Grid>
 
                 <!-- Video Player Overlay -->
-                <Grid x:Name="VideoOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeBg}">
+                <!-- 動画画面の地はテーマ色に追従させず黒固定にする（余白が白くならないように） -->
+                <Grid x:Name="VideoOverlay" Visibility="Collapsed" Background="Black">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
