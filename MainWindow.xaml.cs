@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -44,8 +44,20 @@ public partial class MainWindow : Window
     // 左ペインのタグ一覧（チェックボックス）の並び順トグル。タグ閲覧/タグ動画で共通。
     private bool _tagChecklistSortByUsage;
 
+    // 左ペインの中カテゴリ内スクロール枠（タグ数が多いカテゴリ用）。ホイールの委譲はWindow_PreviewMouseWheelで
+    // 一元的に「手動で」処理する（ネストしたScrollViewer自身のネイティブなホイール処理に頼ると、
+    // RebuildSidebar()のたびに作り直される動的な要素では不安定になることが分かったため、
+    // GridScroller等の既存スクロール領域と同じ「必ずScrollToVerticalOffsetで自前駆動する」方式に統一する）。
+    private readonly List<ScrollViewer> _tagCategoryScrollers = [];
+
     // 右サイドバーのファイル一覧、タグ表示の折り返しあり/なし。タグ閲覧/タグ動画で共通。
     private bool _tagFileListWrapTags = true;
+
+    // 右サイドバー（抽出/タグ閲覧/タグ動画で共有）の幅。GridSplitterでドラッグ変更でき、永続化する。
+    private double _rightSidebarWidth = 300;
+
+    // 左サイドバーの幅。GridSplitterでドラッグ変更でき、永続化する。
+    private double _leftSidebarWidth = 300;
 
     // 移動先フォルダ（複数登録し、ラジオボタンでどこへ移動するか選ぶ。タグ閲覧/タグ動画で別管理）
     private List<string> _tagMoveFolders = [];
@@ -58,7 +70,12 @@ public partial class MainWindow : Window
     private List<string> _imageNames = [];
     private byte[]?[]? _thumbData;
     private BitmapSource?[]? _thumbnails;
+    // サムネイルキャッシュ(_thumbData)自体の画素数。表示サイズ計算用でズームしても変わらない。
+    private (int W, int H)[]? _thumbSrcSizes;
     private List<ImageCard> _cards = [];
+    // ズーム後にサムネイルを実解像度で作り直すためのデバウンス用
+    private DispatcherTimer? _redecodeTimer;
+    private CancellationTokenSource? _redecodeCts;
 
     // Selection
     private int? _selectStart;
@@ -164,6 +181,7 @@ public partial class MainWindow : Window
         TagDatabaseService.SetMode(_tagDbMode == "production" ? TagDbMode.Production : TagDbMode.Demo);
         UpdateTagDbModeButton();
         ApplyTagFileListWrapSetting();
+        LeftSidebarCol.Width = new GridLength(_leftSidebarWidth);
         SwitchMode(_config.State.LastMode);
         UpdateSortButtons();
         UpdateOrientButtons();
@@ -213,6 +231,8 @@ public partial class MainWindow : Window
 
         _tagChecklistSortByUsage = _config.State.TagChecklistSortByUsage;
         _tagFileListWrapTags = _config.State.TagFileListWrapTags;
+        _rightSidebarWidth = _config.State.RightSidebarWidth > 0 ? _config.State.RightSidebarWidth : 300;
+        _leftSidebarWidth = _config.State.LeftSidebarWidth > 0 ? _config.State.LeftSidebarWidth : 300;
 
         _tagMoveFolders = _config.State.TagMoveFolders ?? [];
         _tagMoveTargetFolder = _config.State.TagMoveTargetFolder;
@@ -306,6 +326,8 @@ public partial class MainWindow : Window
         _config.State.TagVideoSearchHasTitle = ChkSearchVideoHasTitle.IsChecked == true;
         _config.State.TagChecklistSortByUsage = _tagChecklistSortByUsage;
         _config.State.TagFileListWrapTags = _tagFileListWrapTags;
+        _config.State.RightSidebarWidth = _rightSidebarWidth;
+        _config.State.LeftSidebarWidth = _leftSidebarWidth;
 
         _config.State.TagMoveFolders = _tagMoveFolders;
         _config.State.TagMoveTargetFolder = _tagMoveTargetFolder;
@@ -402,8 +424,10 @@ public partial class MainWindow : Window
         bool isTagVideo = mode == "tagvideo";
         BtnExtractRange.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
         BtnClearSelection.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
-        RightSidebarCol.Width = (isExtract || isTag || isTagVideo) ? new GridLength(300) : new GridLength(0);
-        RightSidebar.Visibility = (isExtract || isTag || isTagVideo) ? Visibility.Visible : Visibility.Collapsed;
+        bool showRightSidebar = isExtract || isTag || isTagVideo;
+        RightSidebarCol.Width = showRightSidebar ? new GridLength(_rightSidebarWidth) : new GridLength(0);
+        RightSidebarSplitterCol.Width = showRightSidebar ? new GridLength(6) : new GridLength(0);
+        RightSidebar.Visibility = showRightSidebar ? Visibility.Visible : Visibility.Collapsed;
         ExtractRightSidebarContent.Visibility = isExtract ? Visibility.Visible : Visibility.Collapsed;
         TagRightSidebarContent.Visibility = isTag ? Visibility.Visible : Visibility.Collapsed;
         TagVideoRightSidebarContent.Visibility = isTagVideo ? Visibility.Visible : Visibility.Collapsed;
@@ -430,6 +454,7 @@ public partial class MainWindow : Window
             _imageNames.Clear();
             _thumbData = null;
             _thumbnails = null;
+            _thumbSrcSizes = null;
             ThumbnailGrid.Children.Clear();
             _cards.Clear();
             _selectStart = null;
@@ -444,6 +469,7 @@ public partial class MainWindow : Window
             _imageNames.Clear();
             _thumbData = null;
             _thumbnails = null;
+            _thumbSrcSizes = null;
             ThumbnailGrid.Children.Clear();
             _cards.Clear();
             _selectStart = null;
@@ -464,6 +490,18 @@ public partial class MainWindow : Window
         }
 
         RebuildSidebar();
+    }
+
+    private void RightSidebarSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        _rightSidebarWidth = RightSidebarCol.ActualWidth;
+        SaveStateOnly();
+    }
+
+    private void LeftSidebarSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        _leftSidebarWidth = LeftSidebarCol.ActualWidth;
+        SaveStateOnly();
     }
 
     private void BtnBrowse_Click(object sender, RoutedEventArgs e) => SwitchMode("browse");
@@ -579,7 +617,7 @@ public partial class MainWindow : Window
             {
                 if (_thumbSize == s) return;
                 _thumbSize = s;
-                if (_thumbData != null) { BuildThumbnails(); RebuildGrid(); }
+                ResizeThumbnails();
             };
             panel.Children.Add(rb);
         }
@@ -821,27 +859,30 @@ public partial class MainWindow : Window
         }
         LeftSidebarPinned.Visibility = Visibility.Visible;
 
-        AddSidebarLabel("作業フォルダ", LeftSidebarPinned);
-        AddSidebarText(Path.GetDirectoryName(path) ?? "", LeftSidebarPinned);
+        AddSidebarLabel("作業フォルダ", LeftSidebarPinned, fontSize: 12, marginTop: 0, marginBottom: 2);
+        AddSidebarText(Path.GetDirectoryName(path) ?? "", LeftSidebarPinned, fontSize: 12);
 
         var fileButtonRow = new UniformGrid { Columns = 3 };
         var openFileLocationBtn = CreateSidebarButton("📂 開く", () => OpenCurrentFileLocationInExplorer());
-        openFileLocationBtn.Padding = new Thickness(2, 2, 2, 2);
+        openFileLocationBtn.Padding = new Thickness(2, 1, 2, 1);
         openFileLocationBtn.Margin = new Thickness(0, 0, 2, 0);
+        openFileLocationBtn.FontSize = 11;
         fileButtonRow.Children.Add(openFileLocationBtn);
         var renameFileBtn = CreateSidebarButton("✏ 名前変更", () => RenameCurrentTagFile());
-        renameFileBtn.Padding = new Thickness(2, 2, 2, 2);
+        renameFileBtn.Padding = new Thickness(2, 1, 2, 1);
         renameFileBtn.Margin = new Thickness(2, 0, 2, 0);
+        renameFileBtn.FontSize = 11;
         fileButtonRow.Children.Add(renameFileBtn);
         var deleteBtn = CreateSidebarButton("🗑 削除", () => DeleteCurrentTagFile(), "#7f1d1d");
-        deleteBtn.Padding = new Thickness(2, 2, 2, 2);
+        deleteBtn.Padding = new Thickness(2, 1, 2, 1);
         deleteBtn.Margin = new Thickness(2, 0, 0, 0);
+        deleteBtn.FontSize = 11;
         fileButtonRow.Children.Add(deleteBtn);
         LeftSidebarPinned.Children.Add(fileButtonRow);
 
-        AddSidebarSeparator(LeftSidebarPinned);
+        AddSidebarSeparator(LeftSidebarPinned, margin: 5);
 
-        AddSidebarLabel("作品名", LeftSidebarPinned);
+        AddSidebarLabel("作品名", LeftSidebarPinned, fontSize: 12, marginTop: 0, marginBottom: 2);
         var titleBox = new System.Windows.Controls.TextBox
         {
             Text = GetCurrentWorkTitle() ?? "",
@@ -850,8 +891,8 @@ public partial class MainWindow : Window
             CaretBrush = Theme.TextBrush,
             BorderBrush = Theme.BorderBrush,
             FontFamily = new FontFamily(Theme.FontFamily),
-            FontSize = 13,
-            Padding = new Thickness(4)
+            FontSize = 12,
+            Padding = new Thickness(3)
         };
         titleBox.LostFocus += (_, _) => SaveWorkTitleFromText(titleBox.Text);
         titleBox.KeyDown += (_, e) =>
@@ -862,32 +903,36 @@ public partial class MainWindow : Window
         };
         LeftSidebarPinned.Children.Add(titleBox);
 
-        var searchWebRow = new UniformGrid { Columns = 2, Margin = new Thickness(0, 4, 0, 0) };
+        var searchWebRow = new UniformGrid { Columns = 2, Margin = new Thickness(0, 3, 0, 0) };
         var searchByFileNameBtn = CreateSidebarButton("🔍 ファイル名", () => SearchWebByFileName());
-        searchByFileNameBtn.Padding = new Thickness(2, 2, 2, 2);
+        searchByFileNameBtn.Padding = new Thickness(2, 1, 2, 1);
         searchByFileNameBtn.Margin = new Thickness(0, 0, 2, 0);
+        searchByFileNameBtn.FontSize = 11;
         searchByFileNameBtn.ToolTip = "Web検索（ファイル名）";
         searchWebRow.Children.Add(searchByFileNameBtn);
         var searchByWorkTitleBtn = CreateSidebarButton("🔍 作品名", () => SearchWebByWorkTitle());
-        searchByWorkTitleBtn.Padding = new Thickness(2, 2, 2, 2);
+        searchByWorkTitleBtn.Padding = new Thickness(2, 1, 2, 1);
         searchByWorkTitleBtn.Margin = new Thickness(2, 0, 0, 0);
+        searchByWorkTitleBtn.FontSize = 11;
         searchByWorkTitleBtn.ToolTip = "Web検索（作品名）";
         searchWebRow.Children.Add(searchByWorkTitleBtn);
         LeftSidebarPinned.Children.Add(searchWebRow);
 
-        AddSidebarSeparator(LeftSidebarPinned);
+        AddSidebarSeparator(LeftSidebarPinned, margin: 5);
+
+        AddSidebarLabel("設定済みタグ", LeftSidebarPinned, fontSize: 12, marginTop: 0, marginBottom: 2);
+        var tagWrapPanel = new WrapPanel();
+        foreach (var tag in GetCurrentFileTags())
+            tagWrapPanel.Children.Add(BuildTagChipRow(tag));
+        LeftSidebarPinned.Children.Add(tagWrapPanel);
+
+        AddSidebarSeparator(LeftSidebarPinned, margin: 5);
     }
 
     private void BuildTagSidebar()
     {
         if (_archivePath != null)
         {
-            AddSidebarLabel("タグ");
-            var tagWrapPanel = new WrapPanel();
-            foreach (var tag in GetCurrentFileTags())
-                tagWrapPanel.Children.Add(BuildTagChipRow(tag));
-            LeftSidebar.Children.Add(tagWrapPanel);
-
             var addTagBtn = CreateSidebarButton("+ タグを追加", () => OpenTagPickerForCurrentFile());
             addTagBtn.Margin = new Thickness(0, 4, 0, 0);
             LeftSidebar.Children.Add(addTagBtn);
@@ -1011,12 +1056,6 @@ public partial class MainWindow : Window
     {
         if (_videoPath != null)
         {
-            AddSidebarLabel("タグ");
-            var tagWrapPanel = new WrapPanel();
-            foreach (var tag in GetCurrentFileTags())
-                tagWrapPanel.Children.Add(BuildTagChipRow(tag));
-            LeftSidebar.Children.Add(tagWrapPanel);
-
             var addTagBtn = CreateSidebarButton("+ タグを追加", () => OpenTagPickerForCurrentFile());
             addTagBtn.Margin = new Thickness(0, 4, 0, 0);
             LeftSidebar.Children.Add(addTagBtn);
@@ -1473,9 +1512,13 @@ public partial class MainWindow : Window
 
     private sealed record TagChipViewModel(string Name, System.Windows.Media.Brush Background, System.Windows.Media.Brush Foreground);
 
-    private sealed record TagFileListItem(string Path)
+    private sealed record TagFileListItem(string Path, Func<string?> GetCurrentPath)
     {
         public string FileName => System.IO.Path.GetFileName(Path);
+
+        /// <summary>選択状態とは独立して、今メインビューに開いているファイルかどうか。</summary>
+        public Visibility IsCurrentlyOpenVisibility =>
+            string.Equals(Path, GetCurrentPath(), StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
 
         public string FileSizeText
         {
@@ -1531,35 +1574,48 @@ public partial class MainWindow : Window
     /// forceRefreshContent: タグ付け・作品名変更など、_tagFileList自体（並び順）は変わらないがファイル名/タグ表示だけ
     /// 更新したい場合にtrueを指定する。並び順（_tagFileListの中身の順序）には触れない。
     /// </summary>
+    /// <summary>
+    /// 選択（複数選択して右クリックで一括操作するための単なる選択状態）と「今開いているファイル」は別概念にする。
+    /// リビルドのたびに選択を現在のファイルへ同期すると、複数選択して右クリックしようとした矢先に
+    /// 何かの拍子でリビルドが走り選択が消えてしまうため、ここでは同期しない
+    /// （「☑ 現在のファイルを選択」ボタンで明示的に同期する）。
+    /// </summary>
     private void RebuildTagFileListPanel(bool forceRefreshContent = false)
     {
         if (forceRefreshContent || !ReferenceEquals(_tagFileListPanelBuiltFor, _tagFileList))
         {
             var panelSw = System.Diagnostics.Stopwatch.StartNew();
             _suppressTagFileListSelection = true;
-            TagFileListPanel.ItemsSource = _tagFileList.Select(p => new TagFileListItem(p)).ToList();
+            TagFileListPanel.ItemsSource = _tagFileList.Select(p => new TagFileListItem(p, () => _archivePath)).ToList();
             _tagFileListPanelBuiltFor = _tagFileList;
             _suppressTagFileListSelection = false;
             TagScanLog($"[TagScan] 右サイドバー一覧の描画完了（{_tagFileList.Count:N0}件, 経過{panelSw.Elapsed.TotalSeconds:F1}秒）");
         }
 
-        TxtTagFileListHeader.Text = _tagFileList.Count > 0 ? $"ファイル一覧（{_tagFileList.Count:N0}件）" : "ファイル一覧";
+        UpdateTagFileListHeaderText();
+    }
 
-        _suppressTagFileListSelection = true;
-        TagFileListPanel.SelectedIndex = _tagFileIndex;
-        if (_tagFileIndex >= 0 && _tagFileIndex < TagFileListPanel.Items.Count)
-            TagFileListPanel.ScrollIntoView(TagFileListPanel.Items[_tagFileIndex]);
-        _suppressTagFileListSelection = false;
+    private void UpdateTagFileListHeaderText()
+    {
+        var selectedCount = TagFileListPanel.SelectedItems.Count;
+        TxtTagFileListHeader.Text = _tagFileList.Count == 0 ? "ファイル一覧"
+            : selectedCount > 1 ? $"ファイル一覧（{_tagFileList.Count:N0}件 / {selectedCount}件選択中）"
+            : $"ファイル一覧（{_tagFileList.Count:N0}件）";
     }
 
     private void TagFileListPanel_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressTagFileListSelection) return;
-        var idx = TagFileListPanel.SelectedIndex;
-        if (idx < 0 || idx >= _tagFileList.Count || idx == _tagFileIndex) return;
+        UpdateTagFileListHeaderText();
+    }
 
+    /// <summary>ダブルクリックしたファイルを開く。選択だけでは開かない（複数選択して一括操作できるようにするため）。</summary>
+    private void TagFileListPanel_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var idx = TagFileListPanel.SelectedIndex;
+        if (idx < 0 || idx >= _tagFileList.Count) return;
         _tagFileIndex = idx;
-        LoadArchive(_tagFileList[idx]); // ファイル一覧から選んだときはグリッド表示に戻す（ズーム状態を引き継がない）
+        LoadArchive(_tagFileList[idx]); // グリッド表示に戻す（ズーム状態を引き継がない）
     }
 
     private void BtnOpenTopTagFile_Click(object sender, RoutedEventArgs e)
@@ -1567,6 +1623,33 @@ public partial class MainWindow : Window
         if (_tagFileList.Count == 0) return;
         _tagFileIndex = 0;
         LoadArchive(_tagFileList[0]); // 一覧からの選択はグリッド表示に戻す
+        TagFileListPanel.SelectedIndex = 0;
+        if (TagFileListPanel.Items.Count > 0)
+            TagFileListPanel.ScrollIntoView(TagFileListPanel.Items[0]);
+    }
+
+    /// <summary>今開いているファイルだけを一覧上で選択状態にする（複数選択とは独立した明示的な同期操作）。</summary>
+    private void BtnSelectCurrentTagFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_archivePath == null) return;
+        var idx = _tagFileList.IndexOf(_archivePath);
+        if (idx < 0) return;
+        TagFileListPanel.SelectedIndex = idx;
+        TagFileListPanel.ScrollIntoView(TagFileListPanel.Items[idx]);
+    }
+
+    /// <summary>右クリックメニューから、選択中の全ファイルへ同じタグ変更を一括適用する。</summary>
+    private void BtnBulkEditTagFiles_Click(object sender, RoutedEventArgs e)
+    {
+        var paths = TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToList();
+        BulkEditTagsForFiles(paths, TagDomain.Image);
+    }
+
+    /// <summary>右クリックメニューから、選択中の全ファイルをまとめてゴミ箱へ移動する。</summary>
+    private void BtnBulkDeleteTagFiles_Click(object sender, RoutedEventArgs e)
+    {
+        var paths = TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToList();
+        BulkDeleteTagFiles(paths);
     }
 
     /// <summary>
@@ -1873,9 +1956,13 @@ public partial class MainWindow : Window
     private List<string>? _tagVideoFileListPanelBuiltFor;
     private bool _suppressTagVideoFileListSelection;
 
-    private sealed record TagVideoFileListItem(string Path)
+    private sealed record TagVideoFileListItem(string Path, Func<string?> GetCurrentPath)
     {
         public string FileName => System.IO.Path.GetFileName(Path);
+
+        /// <summary>選択状態とは独立して、今再生中の動画かどうか。</summary>
+        public Visibility IsCurrentlyOpenVisibility =>
+            string.Equals(Path, GetCurrentPath(), StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
 
         public string FileSizeText
         {
@@ -1920,32 +2007,42 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>forceRefreshContent: タグ付けなど並び順は変わらないが表示だけ更新したい場合にtrue。</summary>
+    /// <summary>
+    /// forceRefreshContent: タグ付けなど並び順は変わらないが表示だけ更新したい場合にtrue。
+    /// 画像タグ版と同じく、選択（複数選択して右クリック一括操作用）は現在のファイルへ自動同期しない。
+    /// </summary>
     private void RebuildTagVideoFileListPanel(bool forceRefreshContent = false)
     {
         if (forceRefreshContent || !ReferenceEquals(_tagVideoFileListPanelBuiltFor, _tagVideoFileList))
         {
             _suppressTagVideoFileListSelection = true;
-            TagVideoFileListPanel.ItemsSource = _tagVideoFileList.Select(p => new TagVideoFileListItem(p)).ToList();
+            TagVideoFileListPanel.ItemsSource = _tagVideoFileList.Select(p => new TagVideoFileListItem(p, () => _videoPath)).ToList();
             _tagVideoFileListPanelBuiltFor = _tagVideoFileList;
             _suppressTagVideoFileListSelection = false;
         }
 
-        TxtTagVideoFileListHeader.Text = _tagVideoFileList.Count > 0 ? $"ファイル一覧（{_tagVideoFileList.Count:N0}件）" : "ファイル一覧";
+        UpdateTagVideoFileListHeaderText();
+    }
 
-        _suppressTagVideoFileListSelection = true;
-        TagVideoFileListPanel.SelectedIndex = _tagVideoFileIndex;
-        if (_tagVideoFileIndex >= 0 && _tagVideoFileIndex < TagVideoFileListPanel.Items.Count)
-            TagVideoFileListPanel.ScrollIntoView(TagVideoFileListPanel.Items[_tagVideoFileIndex]);
-        _suppressTagVideoFileListSelection = false;
+    private void UpdateTagVideoFileListHeaderText()
+    {
+        var selectedCount = TagVideoFileListPanel.SelectedItems.Count;
+        TxtTagVideoFileListHeader.Text = _tagVideoFileList.Count == 0 ? "ファイル一覧"
+            : selectedCount > 1 ? $"ファイル一覧（{_tagVideoFileList.Count:N0}件 / {selectedCount}件選択中）"
+            : $"ファイル一覧（{_tagVideoFileList.Count:N0}件）";
     }
 
     private void TagVideoFileListPanel_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressTagVideoFileListSelection) return;
-        var idx = TagVideoFileListPanel.SelectedIndex;
-        if (idx < 0 || idx >= _tagVideoFileList.Count || idx == _tagVideoFileIndex) return;
+        UpdateTagVideoFileListHeaderText();
+    }
 
+    /// <summary>ダブルクリックした動画を再生する。選択だけでは再生しない（複数選択して一括操作できるようにするため）。</summary>
+    private void TagVideoFileListPanel_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var idx = TagVideoFileListPanel.SelectedIndex;
+        if (idx < 0 || idx >= _tagVideoFileList.Count) return;
         _tagVideoFileIndex = idx;
         PlayVideo(_tagVideoFileList[idx], trackSiblings: false);
     }
@@ -1955,6 +2052,31 @@ public partial class MainWindow : Window
         if (_tagVideoFileList.Count == 0) return;
         _tagVideoFileIndex = 0;
         PlayVideo(_tagVideoFileList[0], trackSiblings: false);
+        TagVideoFileListPanel.SelectedIndex = 0;
+        if (TagVideoFileListPanel.Items.Count > 0)
+            TagVideoFileListPanel.ScrollIntoView(TagVideoFileListPanel.Items[0]);
+    }
+
+    /// <summary>今再生中の動画だけを一覧上で選択状態にする（複数選択とは独立した明示的な同期操作）。</summary>
+    private void BtnSelectCurrentTagVideoFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_videoPath == null) return;
+        var idx = _tagVideoFileList.IndexOf(_videoPath);
+        if (idx < 0) return;
+        TagVideoFileListPanel.SelectedIndex = idx;
+        TagVideoFileListPanel.ScrollIntoView(TagVideoFileListPanel.Items[idx]);
+    }
+
+    private void BtnBulkEditTagVideoFiles_Click(object sender, RoutedEventArgs e)
+    {
+        var paths = TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToList();
+        BulkEditTagsForFiles(paths, TagDomain.Video);
+    }
+
+    private void BtnBulkDeleteTagVideoFiles_Click(object sender, RoutedEventArgs e)
+    {
+        var paths = TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToList();
+        BulkDeleteTagFiles(paths);
     }
 
     private void BtnToggleTagWrap_Click(object sender, RoutedEventArgs e)
@@ -2311,7 +2433,7 @@ public partial class MainWindow : Window
 
     private StackPanel BuildTagChipRow(Tag tag)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 6, 6) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 4) };
 
         var bgBrush = string.IsNullOrEmpty(tag.Color)
             ? Theme.PanelBrush
@@ -2323,8 +2445,8 @@ public partial class MainWindow : Window
             Background = bgBrush,
             BorderBrush = Theme.BorderBrush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(10, 3, 10, 3),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(7, 1, 7, 1),
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = System.Windows.Input.Cursors.Hand,
             ToolTip = "クリックでこのタグだけで検索",
@@ -2333,7 +2455,7 @@ public partial class MainWindow : Window
                 Text = tag.Name,
                 Foreground = fgBrush,
                 FontFamily = new FontFamily(Theme.FontFamily),
-                FontSize = 13
+                FontSize = 11
             }
         };
         pill.MouseLeftButtonUp += (_, _) => SearchByTagOnly(tag.Id);
@@ -2364,6 +2486,8 @@ public partial class MainWindow : Window
     /// カテゴリ内は2列（Z字：左→右、上→下）で詰めて表示する。</summary>
     private void BuildInlineTagCheckboxArea()
     {
+        _tagCategoryScrollers.Clear();
+
         var currentIds = GetCurrentFileTags().Select(t => t.Id).ToHashSet();
         var usageCounts = TagRepository.GetTagUsageCounts(CurrentTagDomain);
 
@@ -2451,18 +2575,9 @@ public partial class MainWindow : Window
                 Margin = new Thickness(indent, 0, 0, 0),
                 Content = grid
             };
-            // カテゴリ内スクロールが上端/下端に達したら、そこから先は左ペイン全体のスクロールに委ねる
-            // （既定のScrollViewerはPreviewMouseWheelを内部で処理してしまい端でも外側へバブルしないため手動で行う）
-            scroller.PreviewMouseWheel += (_, e) =>
-            {
-                bool atTop = e.Delta > 0 && scroller.VerticalOffset <= 0.5;
-                bool atBottom = e.Delta < 0 && scroller.VerticalOffset >= scroller.ScrollableHeight - 0.5;
-                if (atTop || atBottom)
-                {
-                    e.Handled = true;
-                    SidebarScroller.ScrollToVerticalOffset(SidebarScroller.VerticalOffset - e.Delta);
-                }
-            };
+            // このScrollViewer自身のネイティブなホイール処理には頼らない（動的に作り直す要素では不安定なため）。
+            // ホイールの実際の駆動はWindow_PreviewMouseWheelが_tagCategoryScrollers経由で一元的に行う。
+            _tagCategoryScrollers.Add(scroller);
             LeftSidebar.Children.Add(scroller);
         }
 
@@ -2603,6 +2718,139 @@ public partial class MainWindow : Window
 
         RebuildSidebar();
         RefreshCurrentTagFileListDisplay();
+    }
+
+    /// <summary>
+    /// ファイル一覧で複数選択した状態から一括でタグを変更する。全選択ファイルに共通するタグだけを
+    /// 初期チェック状態にして表示し、そこから追加でチェックしたタグは全ファイルへ追加、外したタグは
+    /// 全ファイルから除去する。もともと一部のファイルにしか付いていない（共通ではない）タグには触れない。
+    /// </summary>
+    private void BulkEditTagsForFiles(List<string> paths, TagDomain domain)
+    {
+        if (paths.Count == 0) return;
+
+        var identities = new List<(string Path, long Size, long Ticks)>();
+        var perFileTagIds = new List<HashSet<long>>();
+        foreach (var path in paths)
+        {
+            var identity = GetFileIdentity(path);
+            if (identity == null) continue;
+            identities.Add(identity.Value);
+            var entry = TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks, domain);
+            perFileTagIds.Add(entry == null ? [] : [.. TagRepository.GetTagsForFile(entry.Id, domain).Select(t => t.Id)]);
+        }
+        if (identities.Count == 0) return;
+
+        var common = perFileTagIds.Aggregate((a, b) => { a.IntersectWith(b); return a; });
+
+        var dlg = new Dialogs.TagPickerDialog(common, enforceRequiredCategories: false,
+            _tagPickerDialogWidth, _tagPickerDialogHeight, domain: domain) { Owner = this };
+        var result = dlg.ShowDialog();
+        _tagPickerDialogWidth = dlg.Width;
+        _tagPickerDialogHeight = dlg.Height;
+        SaveStateOnly();
+        if (result != true) return;
+
+        var toAdd = dlg.SelectedTagIds.Except(common).ToList();
+        var toRemove = common.Except(dlg.SelectedTagIds).ToList();
+        if (toAdd.Count == 0 && toRemove.Count == 0) return;
+
+        foreach (var identity in identities)
+        {
+            var entryId = TagRepository.GetOrCreateFileEntry(identity.Path, identity.Size, identity.Ticks, domain);
+            foreach (var id in toAdd) TagRepository.AddFileTag(entryId, id, domain);
+            foreach (var id in toRemove) TagRepository.RemoveFileTag(entryId, id, domain);
+        }
+
+        SetStatus($"{identities.Count}件のファイルにタグを適用しました");
+        RebuildSidebar();
+        RefreshCurrentTagFileListDisplay();
+    }
+
+    /// <summary>ファイル一覧で複数選択したファイルをまとめてゴミ箱へ移動する（タグ閲覧/タグ動画共通、モードで分岐）。</summary>
+    private void BulkDeleteTagFiles(List<string> paths)
+    {
+        if (paths.Count == 0) return;
+        if (new Dialogs.ConfirmDialog($"選択した{paths.Count}件をゴミ箱へ移動しますか？") { Owner = this }.ShowDialog() != true)
+            return;
+
+        var domain = CurrentTagDomain;
+        var deletedPaths = new HashSet<string>();
+        foreach (var path in paths)
+        {
+            var identity = GetFileIdentity(path);
+            try
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                if (identity != null)
+                    TagRepository.DeleteFileEntryByIdentity(identity.Value.Path, identity.Value.Size, identity.Value.Ticks, domain);
+                deletedPaths.Add(path);
+            }
+            catch { /* このファイルはスキップして続行 */ }
+        }
+        if (deletedPaths.Count == 0) return;
+
+        SetStatus($"{deletedPaths.Count}件をゴミ箱へ移動しました");
+
+        if (_mode == "tagvideo")
+        {
+            _tagVideoFileList = [.. _tagVideoFileList.Where(p => !deletedPaths.Contains(p))];
+            if (_videoPath != null && deletedPaths.Contains(_videoPath))
+            {
+                if (_tagVideoFileList.Count > 0)
+                {
+                    _tagVideoFileIndex = 0;
+                    PlayVideo(_tagVideoFileList[0], trackSiblings: false);
+                }
+                else
+                {
+                    StopVideo();
+                    _videoPath = null;
+                    _tagVideoFileIndex = -1;
+                    VideoOverlay.Visibility = Visibility.Collapsed;
+                    EmptyMessage.Visibility = Visibility.Visible;
+                    UpdateNavigation();
+                    ClearStatusBar();
+                    RebuildSidebar();
+                }
+            }
+            else
+            {
+                _tagVideoFileIndex = _videoPath != null ? _tagVideoFileList.IndexOf(_videoPath) : -1;
+                RebuildSidebar();
+            }
+        }
+        else
+        {
+            _tagFileList = [.. _tagFileList.Where(p => !deletedPaths.Contains(p))];
+            if (_archivePath != null && deletedPaths.Contains(_archivePath))
+            {
+                if (_tagFileList.Count > 0)
+                {
+                    _tagFileIndex = 0;
+                    CloseViewer();
+                    LoadArchive(_tagFileList[0]);
+                }
+                else
+                {
+                    _archivePath = null;
+                    _tagFileIndex = -1;
+                    ThumbnailGrid.Children.Clear();
+                    _cards.Clear();
+                    EmptyMessage.Visibility = Visibility.Visible;
+                    UpdateNavigation();
+                    ClearStatusBar();
+                    RebuildSidebar();
+                }
+            }
+            else
+            {
+                _tagFileIndex = _archivePath != null ? _tagFileList.IndexOf(_archivePath) : -1;
+                RebuildSidebar();
+            }
+        }
     }
 
     /// <summary>
@@ -2885,6 +3133,7 @@ public partial class MainWindow : Window
         _imageNames.Clear();
         _thumbData = null;
         _thumbnails = null;
+        _thumbSrcSizes = null;
         ThumbnailGrid.Children.Clear();
         _cards.Clear();
         _selectStart = null;
@@ -3625,39 +3874,39 @@ public partial class MainWindow : Window
     }
 
     // Sidebar helpers
-    private void AddSidebarLabel(string text, System.Windows.Controls.Panel? target = null)
+    private void AddSidebarLabel(string text, System.Windows.Controls.Panel? target = null, double fontSize = 14, double marginTop = 4, double marginBottom = 4)
     {
         (target ?? LeftSidebar).Children.Add(new TextBlock
         {
             Text = text,
             Foreground = Theme.TextBrush,
             FontFamily = new FontFamily(Theme.FontFamily),
-            FontSize = 14,
+            FontSize = fontSize,
             FontWeight = FontWeights.Bold,
-            Margin = new Thickness(0, 4, 0, 4)
+            Margin = new Thickness(0, marginTop, 0, marginBottom)
         });
     }
 
-    private void AddSidebarText(string text, System.Windows.Controls.Panel? target = null)
+    private void AddSidebarText(string text, System.Windows.Controls.Panel? target = null, double fontSize = 14)
     {
         (target ?? LeftSidebar).Children.Add(new TextBlock
         {
             Text = text,
             Foreground = Theme.SubtextBrush,
             FontFamily = new FontFamily(Theme.FontFamily),
-            FontSize = 14,
+            FontSize = fontSize,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 4)
         });
     }
 
-    private void AddSidebarSeparator(System.Windows.Controls.Panel? target = null)
+    private void AddSidebarSeparator(System.Windows.Controls.Panel? target = null, double margin = 8)
     {
         (target ?? LeftSidebar).Children.Add(new Border
         {
             Height = 1,
             Background = Theme.BorderBrush,
-            Margin = new Thickness(0, 8, 0, 8)
+            Margin = new Thickness(0, margin, 0, margin)
         });
     }
 
@@ -4246,6 +4495,7 @@ public partial class MainWindow : Window
                     UpdateFileSize(path);
                     UpdateNavigation();
                     RebuildSidebar();
+                    RefreshCurrentTagFileListDisplay(); // ファイル一覧の「今開いている」マークを更新（_tagFileListの並び順自体は変えない）
 
                     // If viewer was open, show first image of new archive
                     if (keepViewer && _viewerOpen && _imageNames.Count > 0)
@@ -4381,12 +4631,24 @@ public partial class MainWindow : Window
     private void BuildThumbnails()
     {
         if (_thumbData == null) return;
-        _thumbnails = new BitmapSource?[_thumbData.Length];
-        for (int i = 0; i < _thumbData.Length; i++)
-        {
-            if (_thumbData[i] != null)
-                _thumbnails[i] = ThumbnailService.CreateDisplayThumbnail(_thumbData[i]!, _thumbSize, _cardOrient);
-        }
+        var data = _thumbData;
+        var bitmaps = new BitmapSource?[data.Length];
+        var sizes = new (int W, int H)[data.Length];
+        int size = _thumbSize;
+        string orient = _cardOrient;
+
+        // 生成物はFreeze済みなので並列デコードして構わない（従来はUIスレッド上の直列ループ）
+        Parallel.For(0, data.Length,
+            new ParallelOptions { MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8) },
+            i =>
+            {
+                if (data[i] == null) return;
+                bitmaps[i] = ThumbnailService.CreateDisplayThumbnail(data[i]!, size, orient, out int w, out int h);
+                sizes[i] = (w, h);
+            });
+
+        _thumbnails = bitmaps;
+        _thumbSrcSizes = sizes;
     }
 
     private void RebuildGrid()
@@ -4403,7 +4665,9 @@ public partial class MainWindow : Window
         {
             var card = new ImageCard();
             var filename = Path.GetFileName(_imageNames[i]);
-            card.Setup(i, filename, _thumbnails.Length > i ? _thumbnails[i] : null, _thumbSize);
+            var srcSize = _thumbSrcSizes != null && _thumbSrcSizes.Length > i ? _thumbSrcSizes[i] : (0, 0);
+            card.Setup(i, filename, _thumbnails.Length > i ? _thumbnails[i] : null,
+                       srcSize.Item1, srcSize.Item2, _thumbSize, _cardOrient);
             card.Width = cardW;
             card.CardClicked += OnCardClicked;
             card.CardDoubleClicked += OnCardDoubleClicked;
@@ -5122,14 +5386,14 @@ public partial class MainWindow : Window
     {
         _cardOrient = "portrait";
         UpdateOrientButtons();
-        if (_thumbData != null) { BuildThumbnails(); RebuildGrid(); }
+        ResizeThumbnails();
     }
 
     private void BtnLandscape_Click(object sender, RoutedEventArgs e)
     {
         _cardOrient = "landscape";
         UpdateOrientButtons();
-        if (_thumbData != null) { BuildThumbnails(); RebuildGrid(); }
+        ResizeThumbnails();
     }
 
     // ======== ZOOM ========
@@ -5138,14 +5402,99 @@ public partial class MainWindow : Window
     {
         int newSize = _thumbSize + delta * Theme.ThumbSizeStep;
         newSize = Math.Clamp(newSize, Theme.ThumbSizeMin, Theme.ThumbSizeMax);
-        if (newSize != _thumbSize)
+        if (newSize == _thumbSize) return;
+        _thumbSize = newSize;
+        ResizeThumbnails();
+    }
+
+    /// <summary>
+    /// サムネサイズ/向きの変更を反映する。カードの作り直しもビットマップのデコードも行わず
+    /// 表示サイズだけを更新して即座に追従させ、実解像度での作り直しは操作が止まってから
+    /// バックグラウンドで行う（ホイールを回すたびに全画像を再デコードしないため）。
+    /// </summary>
+    private void ResizeThumbnails()
+    {
+        if (_thumbData == null) return;
+
+        // 表示倍率が変わると内容の総高さも変わるので、位置は比率で保つ
+        double ratio = GridScroller.ScrollableHeight > 0
+            ? GridScroller.VerticalOffset / GridScroller.ScrollableHeight
+            : 0;
+
+        int thumbW = _cardOrient == "portrait" ? _thumbSize * 2 / 3 : _thumbSize;
+        int cardW = thumbW + 32;
+        foreach (var card in _cards)
         {
-            _thumbSize = newSize;
-            if (_thumbData != null)
+            card.Width = cardW;
+            card.ApplyThumbSize(_thumbSize, _cardOrient);
+        }
+
+        GridScroller.UpdateLayout();
+        GridScroller.ScrollToVerticalOffset(ratio * GridScroller.ScrollableHeight);
+
+        ScheduleThumbnailRedecode();
+    }
+
+    private void ScheduleThumbnailRedecode()
+    {
+        if (_redecodeTimer == null)
+        {
+            _redecodeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+            _redecodeTimer.Tick += (_, _) =>
             {
-                BuildThumbnails();
-                RebuildGrid();
-            }
+                _redecodeTimer!.Stop();
+                _ = RedecodeThumbnailsAsync();
+            };
+        }
+        _redecodeTimer.Stop();
+        _redecodeTimer.Start();
+    }
+
+    /// <summary>現在の表示サイズちょうどにサムネイルを作り直す（ぼけの解消）。</summary>
+    private async Task RedecodeThumbnailsAsync()
+    {
+        if (_thumbData == null) return;
+
+        _redecodeCts?.Cancel();
+        _redecodeCts = new CancellationTokenSource();
+        var ct = _redecodeCts.Token;
+
+        var data = _thumbData;
+        int size = _thumbSize;
+        string orient = _cardOrient;
+        var bitmaps = new BitmapSource?[data.Length];
+        var sizes = new (int W, int H)[data.Length];
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                Parallel.For(0, data.Length,
+                    new ParallelOptions
+                    {
+                        MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8),
+                        CancellationToken = ct
+                    },
+                    i =>
+                    {
+                        if (data[i] == null) return;
+                        bitmaps[i] = ThumbnailService.CreateDisplayThumbnail(data[i]!, size, orient, out int w, out int h);
+                        sizes[i] = (w, h);
+                    });
+            }, ct);
+        }
+        catch (OperationCanceledException) { return; }
+        catch { return; }
+
+        // 作り直している間に条件が変わっていたら破棄する（次のタイマーが改めて走る）
+        if (ct.IsCancellationRequested || !ReferenceEquals(_thumbData, data)
+            || _thumbSize != size || _cardOrient != orient) return;
+
+        _thumbnails = bitmaps;
+        _thumbSrcSizes = sizes;
+        for (int i = 0; i < _cards.Count && i < bitmaps.Length; i++)
+        {
+            if (bitmaps[i] != null) _cards[i].UpdateThumbnail(bitmaps[i]);
         }
     }
 
@@ -5217,6 +5566,7 @@ public partial class MainWindow : Window
             _cards.Clear();
             _thumbData = null;
             _thumbnails = null;
+            _thumbSrcSizes = null;
             EmptyMessage.Visibility = Visibility.Visible;
             var tb = EmptyMessage.Children.OfType<TextBlock>().LastOrDefault();
             if (tb != null) tb.Text = "画像フォルダを「開く」で選択またはドロップ";
@@ -5792,6 +6142,7 @@ public partial class MainWindow : Window
             UpdateNavigation();
         }
         RebuildSidebar();
+        RefreshCurrentTagFileListDisplay(); // ファイル一覧の「今再生中」マークを更新（_tagVideoFileListの並び順自体は変えない）
 
         // Show loading overlay
         ProgressOverlay.Visibility = Visibility.Visible;
@@ -5821,6 +6172,7 @@ public partial class MainWindow : Window
             // Use file path directly (not Uri) to avoid encoding issues with Japanese characters
             using var media = new Media(_libVlc!, path, FromType.FromPath);
             await Task.Run(() => media.Parse(MediaParseOptions.ParseLocal));
+            _vlcPlayer.Playing += VlcPlayer_Playing;
             _vlcPlayer.Play(media);
 
             _videoTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -5838,6 +6190,20 @@ public partial class MainWindow : Window
         {
             LoadProgress.IsIndeterminate = false;
             ProgressOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>一部のAVI(AC3音声等)でlibVLCが音声トラックを自動選択しないことがあるため、
+    /// 再生開始時に未選択(-1)なら明示的に先頭の音声トラックを選択する。</summary>
+    private void VlcPlayer_Playing(object? sender, EventArgs e)
+    {
+        var player = _vlcPlayer;
+        if (player == null) return;
+        if (player.AudioTrack < 0)
+        {
+            var candidates = player.AudioTrackDescription.Where(t => t.Id != -1).ToArray();
+            if (candidates.Length > 0)
+                player.SetAudioTrack(candidates[0].Id);
         }
     }
 
@@ -6114,25 +6480,29 @@ public partial class MainWindow : Window
         var rootGrid = (Grid)Content;
         var headerRow = rootGrid.RowDefinitions[0];
         var statusRow = rootGrid.RowDefinitions[2];
-        // Main content grid > Column 0 = Left sidebar, Column 2 = Right sidebar
-        var contentGrid = (Grid)rootGrid.Children[1]; // Grid.Row="1"
-        var sidebarCol = contentGrid.ColumnDefinitions[0];
-        var rightSidebarCol = contentGrid.ColumnDefinitions[2];
+        var sidebarCol = LeftSidebarCol;
 
         if (_videoTheaterMode)
         {
             headerRow.Height = new GridLength(0);
             statusRow.Height = new GridLength(0);
+            // MinWidthが立っていると幅0が効かず細く残ってしまうため、シアターモード中だけ外す
+            sidebarCol.MinWidth = 0;
+            RightSidebarCol.MinWidth = 0;
             sidebarCol.Width = new GridLength(0);
-            rightSidebarCol.Width = new GridLength(0);
+            RightSidebarCol.Width = new GridLength(0);
+            RightSidebarSplitterCol.Width = new GridLength(0);
         }
         else
         {
             headerRow.Height = new GridLength(56);
             statusRow.Height = new GridLength(30);
-            sidebarCol.Width = new GridLength(300);
-            rightSidebarCol.Width = (_mode == "extract" || _mode == "tag" || _mode == "tagvideo")
-                ? new GridLength(300) : new GridLength(0);
+            sidebarCol.MinWidth = 180;
+            RightSidebarCol.MinWidth = 200;
+            sidebarCol.Width = new GridLength(_leftSidebarWidth);
+            bool showRightSidebar = _mode == "extract" || _mode == "tag" || _mode == "tagvideo";
+            RightSidebarCol.Width = showRightSidebar ? new GridLength(_rightSidebarWidth) : new GridLength(0);
+            RightSidebarSplitterCol.Width = showRightSidebar ? new GridLength(6) : new GridLength(0);
         }
     }
 
@@ -6329,14 +6699,42 @@ public partial class MainWindow : Window
             // ファイル一覧上ではリスト自身のスクロールに任せる（動画のスキップ等に奪われないように）
             return;
         }
-        if (_mode == "video" || _mode == "tagvideo") return;
 
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             ZoomThumbnails(e.Delta > 0 ? 1 : -1);
             e.Handled = true;
+            return;
         }
-        else if (_mode == "tag" && RightSidebar.IsVisible && TagFileListPanel.IsMouseOver)
+
+        // タグ閲覧/タグ動画: 左ペイン上のホイールは常にここで自前駆動する（ズーム中/通常時どちらも共通）。
+        // 中カテゴリ内スクロール枠（_tagCategoryScrollers）に乗っていればそれをまず動かし、既に端まで
+        // スクロール済みならそこから先は左ペイン全体（SidebarScroller）に委ねる。ネストしたScrollViewer
+        // 自身のネイティブなホイール処理には頼らない（動的に作り直す要素では不安定なため）。
+        if ((_mode == "tag" || _mode == "tagvideo") && SidebarScroller.IsMouseOver)
+        {
+            var hovered = _tagCategoryScrollers.FirstOrDefault(s => s.IsMouseOver);
+            if (hovered != null)
+            {
+                bool canScrollFurther = e.Delta > 0
+                    ? hovered.VerticalOffset > 0.5
+                    : hovered.VerticalOffset < hovered.ScrollableHeight - 0.5;
+                if (canScrollFurther)
+                    hovered.ScrollToVerticalOffset(hovered.VerticalOffset - e.Delta);
+                else
+                    SidebarScroller.ScrollToVerticalOffset(SidebarScroller.VerticalOffset - e.Delta);
+            }
+            else
+            {
+                SidebarScroller.ScrollToVerticalOffset(SidebarScroller.VerticalOffset - e.Delta);
+            }
+            e.Handled = true;
+            return;
+        }
+
+        if (_mode == "video" || _mode == "tagvideo") return;
+
+        if (_mode == "tag" && RightSidebar.IsVisible && TagFileListPanel.IsMouseOver)
         {
             // ファイル一覧上ではリスト自身のスクロールに任せる（ビューアーのナビゲーション等に奪われないように）
         }
@@ -6551,8 +6949,8 @@ public partial class MainWindow : Window
 
     private void ShowError(string message)
     {
-        var dlg = new ErrorDialog(message);
-        dlg.Owner = this;
+        var dlg = new ErrorDialog(message) { Owner = this, Topmost = true };
+        dlg.Loaded += (_, _) => { dlg.Activate(); dlg.Topmost = false; };
         dlg.ShowDialog();
     }
 

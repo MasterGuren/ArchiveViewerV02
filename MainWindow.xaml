@@ -119,8 +119,13 @@
         <!-- タグ閲覧/タグ動画の右サイドバー・ファイル一覧の行テンプレート。タグ部分の折り返しあり/なしを切り替えられるよう2種類用意する。 -->
         <DataTemplate x:Key="TagListItemTemplateWrap">
             <StackPanel>
-                <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"
-                           TextWrapping="Wrap"/>
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Text="▶ " Visibility="{Binding IsCurrentlyOpenVisibility}"
+                               Foreground="#22c55e" FontFamily="Yu Gothic UI" FontSize="12" FontWeight="Bold"
+                               ToolTip="今開いているファイル"/>
+                    <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"
+                               TextWrapping="Wrap"/>
+                </DockPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                     <TextBlock Text="{Binding FileSizeText}"
                                Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"/>
@@ -146,8 +151,13 @@
 
         <DataTemplate x:Key="TagListItemTemplateNoWrap">
             <StackPanel>
-                <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"
-                           TextTrimming="CharacterEllipsis"/>
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left" Text="▶ " Visibility="{Binding IsCurrentlyOpenVisibility}"
+                               Foreground="#22c55e" FontFamily="Yu Gothic UI" FontSize="12" FontWeight="Bold"
+                               ToolTip="今開いているファイル"/>
+                    <TextBlock Text="{Binding FileName}" FontFamily="Yu Gothic UI" FontSize="12"
+                               TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                     <TextBlock Text="{Binding FileSizeText}"
                                Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"/>
@@ -273,10 +283,17 @@
         <!-- MAIN CONTENT -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LeftSidebarCol" Width="300"/>
+                <ColumnDefinition x:Name="LeftSidebarCol" Width="300" MinWidth="180" MaxWidth="900"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition x:Name="RightSidebarCol" Width="0"/>
+                <ColumnDefinition x:Name="RightSidebarSplitterCol" Width="0"/>
+                <ColumnDefinition x:Name="RightSidebarCol" Width="0" MinWidth="200" MaxWidth="900"/>
             </Grid.ColumnDefinitions>
+
+            <GridSplitter x:Name="RightSidebarSplitter" Grid.Column="2" Width="6"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext"
+                          Background="{DynamicResource ThemeBorder}"
+                          DragCompleted="RightSidebarSplitter_DragCompleted"/>
 
             <!-- LEFT SIDEBAR -->
             <Border Grid.Column="0" Background="{DynamicResource ThemePanel}" BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="0,0,1,0">
@@ -287,6 +304,12 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
+
+            <!-- LeftSidebarのBorderより後に置くことで、重なった状態でもドラッグを受け取れるようにする -->
+            <GridSplitter x:Name="LeftSidebarSplitter" Grid.Column="0" Width="6"
+                          HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                          Background="{DynamicResource ThemeBorder}"
+                          DragCompleted="LeftSidebarSplitter_DragCompleted"/>
 
             <!-- MAIN AREA -->
             <Grid Grid.Column="1">
@@ -441,7 +464,7 @@
             </Grid>
 
             <!-- RIGHT SIDEBAR (Extract mode / Tag mode) -->
-            <Border x:Name="RightSidebar" Grid.Column="2" Background="{DynamicResource ThemePanel}"
+            <Border x:Name="RightSidebar" Grid.Column="3" Background="{DynamicResource ThemePanel}"
                     BorderBrush="{DynamicResource ThemeBorder}" BorderThickness="1,0,0,0" Visibility="Collapsed">
                 <Grid>
                     <DockPanel x:Name="ExtractRightSidebarContent" Margin="12">
@@ -510,7 +533,7 @@
 
                         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorder}" Margin="0,0,0,8"/>
 
-                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                             <Button DockPanel.Dock="Right" Content="▶ 先頭を開く" Click="BtnOpenTopTagFile_Click" Padding="4,2" FontSize="11"
                                     Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                             <Button x:Name="BtnToggleTagWrap" DockPanel.Dock="Right" Click="BtnToggleTagWrap_Click" Padding="4,2" FontSize="11" Margin="0,0,4,0"
@@ -519,6 +542,9 @@
                                        Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
                                        FontWeight="Bold"/>
                         </DockPanel>
+                        <Button DockPanel.Dock="Top" Content="☑ 現在のファイルを選択" Click="BtnSelectCurrentTagFile_Click" Padding="4,2" FontSize="11"
+                                HorizontalAlignment="Left" Margin="0,0,0,4"
+                                Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                         <ListBox x:Name="TagFileListPanel" Background="Transparent" BorderThickness="0"
                                  Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"
                                  ScrollViewer.CanContentScroll="True"
@@ -528,7 +554,16 @@
                                  ItemTemplate="{StaticResource TagListItemTemplateWrap}"
                                  ItemContainerStyle="{StaticResource TagListItemContainerStyle}"
                                  AlternationCount="2"
-                                 SelectionChanged="TagFileListPanel_SelectionChanged"/>
+                                 SelectionMode="Extended"
+                                 SelectionChanged="TagFileListPanel_SelectionChanged"
+                                 MouseDoubleClick="TagFileListPanel_MouseDoubleClick">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagFiles_Click"/>
+                                    <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagFiles_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
                     </DockPanel>
 
                     <DockPanel x:Name="TagVideoRightSidebarContent" Margin="12" Visibility="Collapsed">
@@ -582,7 +617,7 @@
 
                         <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource ThemeBorder}" Margin="0,0,0,8"/>
 
-                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
                             <Button DockPanel.Dock="Right" Content="▶ 先頭を開く" Click="BtnOpenTopTagVideoFile_Click" Padding="4,2" FontSize="11"
                                     Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                             <Button x:Name="BtnToggleTagVideoWrap" DockPanel.Dock="Right" Click="BtnToggleTagVideoWrap_Click" Padding="4,2" FontSize="11" Margin="0,0,4,0"
@@ -591,6 +626,9 @@
                                        Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="14"
                                        FontWeight="Bold"/>
                         </DockPanel>
+                        <Button DockPanel.Dock="Top" Content="☑ 現在のファイルを選択" Click="BtnSelectCurrentTagVideoFile_Click" Padding="4,2" FontSize="11"
+                                HorizontalAlignment="Left" Margin="0,0,0,4"
+                                Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                         <ListBox x:Name="TagVideoFileListPanel" Background="Transparent" BorderThickness="0"
                                  Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="12"
                                  ScrollViewer.CanContentScroll="True"
@@ -600,7 +638,16 @@
                                  ItemTemplate="{StaticResource TagListItemTemplateWrap}"
                                  ItemContainerStyle="{StaticResource TagListItemContainerStyle}"
                                  AlternationCount="2"
-                                 SelectionChanged="TagVideoFileListPanel_SelectionChanged"/>
+                                 SelectionMode="Extended"
+                                 SelectionChanged="TagVideoFileListPanel_SelectionChanged"
+                                 MouseDoubleClick="TagVideoFileListPanel_MouseDoubleClick">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagVideoFiles_Click"/>
+                                    <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagVideoFiles_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
                     </DockPanel>
                 </Grid>
             </Border>

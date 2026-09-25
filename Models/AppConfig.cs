@@ -167,4 +167,10 @@ public class AppState
 
     [JsonPropertyName("tag_file_list_wrap_tags")]
     public bool TagFileListWrapTags { get; set; } = true;
+
+    [JsonPropertyName("right_sidebar_width")]
+    public double RightSidebarWidth { get; set; } = 300;
+
+    [JsonPropertyName("left_sidebar_width")]
+    public double LeftSidebarWidth { get; set; } = 300;
 }

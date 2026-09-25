@@ -33,6 +33,13 @@ public partial class TagPickerDialog : Window
 
     private void Window_SizeChanged(object sender, SizeChangedEventArgs e) => RefreshList();
 
+    /// <summary>この画面は縦ではなく横方向に並ぶ列でスクロールするので、上下ホイールをそのまま横スクロールに割り当てる。</summary>
+    private void ContentScroller_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        ContentScroller.ScrollToHorizontalOffset(ContentScroller.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
     private const double ColumnWidth = 190;
     private const double RowHeight = 21;
     private const double FallbackColumnHeight = 480;

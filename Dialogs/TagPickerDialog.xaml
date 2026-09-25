@@ -24,7 +24,8 @@
                  TextChanged="TxtFilter_TextChanged"
                  ToolTip="タグ名・カテゴリ名で絞り込み"/>
 
-        <ScrollViewer x:Name="ContentScroller" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="ContentScroller" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto"
+                      PreviewMouseWheel="ContentScroller_PreviewMouseWheel">
             <StackPanel x:Name="ColumnsPanel" Orientation="Horizontal"/>
         </ScrollViewer>
     </DockPanel>
