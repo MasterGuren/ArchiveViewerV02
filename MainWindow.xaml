@@ -116,6 +116,19 @@
             </Setter>
         </Style>
 
+        <!-- ファイル一覧の容量・作品名などの補助表記。選択行ではアクセント背景に乗るため、選択時だけ文字色を切り替える。 -->
+        <Style x:Key="TagListSubtextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSubtext}"/>
+            <Setter Property="FontFamily" Value="Yu Gothic UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource ThemeAccentText}"/>
+                    <Setter Property="Opacity" Value="0.8"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- タグ閲覧/タグ動画の右サイドバー・ファイル一覧の行テンプレート。タグ部分の折り返しあり/なしを切り替えられるよう2種類用意する。 -->
         <DataTemplate x:Key="TagListItemTemplateWrap">
             <StackPanel>
@@ -127,10 +140,9 @@
                                TextWrapping="Wrap"/>
                 </DockPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
-                    <TextBlock Text="{Binding FileSizeText}"
-                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                    <TextBlock Text="{Binding FileSizeText}" Style="{StaticResource TagListSubtextStyle}"/>
                     <TextBlock Text="{Binding WorkTitle}" Visibility="{Binding WorkTitleVisibility}"
-                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11" Margin="6,0,0,0"/>
+                               Style="{StaticResource TagListSubtextStyle}" Margin="6,0,0,0"/>
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
                     <ItemsControl.ItemsPanel>
@@ -140,7 +152,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
+                            <Border Background="{Binding Background}" BorderBrush="{Binding Border}" BorderThickness="1"
+                                    CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
                                 <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
                             </Border>
                         </DataTemplate>
@@ -159,10 +172,9 @@
                                TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
-                    <TextBlock Text="{Binding FileSizeText}"
-                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11"/>
+                    <TextBlock Text="{Binding FileSizeText}" Style="{StaticResource TagListSubtextStyle}"/>
                     <TextBlock Text="{Binding WorkTitle}" Visibility="{Binding WorkTitleVisibility}"
-                               Foreground="{DynamicResource ThemeSubtext}" FontFamily="Yu Gothic UI" FontSize="11" Margin="6,0,0,0"/>
+                               Style="{StaticResource TagListSubtextStyle}" Margin="6,0,0,0"/>
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding Tags}" Margin="0,2,0,0">
                     <ItemsControl.ItemsPanel>
@@ -172,7 +184,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Background="{Binding Background}" CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
+                            <Border Background="{Binding Background}" BorderBrush="{Binding Border}" BorderThickness="1"
+                                    CornerRadius="6" Padding="4,1" Margin="0,0,3,3">
                                 <TextBlock Text="{Binding Name}" Foreground="{Binding Foreground}" FontFamily="Yu Gothic UI" FontSize="9"/>
                             </Border>
                         </DataTemplate>

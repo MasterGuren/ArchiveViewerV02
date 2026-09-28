@@ -22,7 +22,7 @@
             <Border x:Name="BadgeBorder" Grid.Row="0"
                     HorizontalAlignment="Left" VerticalAlignment="Top"
                     Background="{DynamicResource ThemeAccent}" CornerRadius="0,0,4,0" Padding="4,1">
-                <TextBlock x:Name="BadgeText" Foreground="White"
+                <TextBlock x:Name="BadgeText" Foreground="{DynamicResource ThemeAccentText}"
                            FontFamily="Yu Gothic UI" FontSize="9" FontWeight="Bold"/>
             </Border>
         </Grid>

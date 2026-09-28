@@ -153,6 +153,11 @@ public class AppState
     [JsonPropertyName("tag_checklist_sort_by_usage")]
     public bool TagChecklistSortByUsage { get; set; }
 
+    // 左ペインのタグ一覧の並び順: "default"(通常順) / "usage"(件数順) / "name"(名前昇順)。
+    // 空の場合は旧設定 TagChecklistSortByUsage から引き継ぐ。
+    [JsonPropertyName("tag_checklist_sort")]
+    public string TagChecklistSort { get; set; } = "";
+
     [JsonPropertyName("tag_move_folders")]
     public List<string> TagMoveFolders { get; set; } = [];
 

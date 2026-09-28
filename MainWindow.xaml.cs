@@ -42,7 +42,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _tagVideoListCts;
 
     // 左ペインのタグ一覧（チェックボックス）の並び順トグル。タグ閲覧/タグ動画で共通。
-    private bool _tagChecklistSortByUsage;
+    // "default"(通常順) / "usage"(件数順) / "name"(名前昇順)
+    private string _tagChecklistSort = "default";
 
     // 左ペインの中カテゴリ内スクロール枠（タグ数が多いカテゴリ用）。ホイールの委譲はWindow_PreviewMouseWheelで
     // 一元的に「手動で」処理する（ネストしたScrollViewer自身のネイティブなホイール処理に頼ると、
@@ -234,7 +235,11 @@ public partial class MainWindow : Window
         ChkSearchVideoNoTitle.IsChecked = _config.State.TagVideoSearchNoTitle;
         ChkSearchVideoHasTitle.IsChecked = _config.State.TagVideoSearchHasTitle;
 
-        _tagChecklistSortByUsage = _config.State.TagChecklistSortByUsage;
+        _tagChecklistSort = _config.State.TagChecklistSort switch
+        {
+            "default" or "usage" or "name" => _config.State.TagChecklistSort,
+            _ => _config.State.TagChecklistSortByUsage ? "usage" : "default"
+        };
         _tagFileListWrapTags = _config.State.TagFileListWrapTags;
         _rightSidebarWidth = _config.State.RightSidebarWidth > 0 ? _config.State.RightSidebarWidth : 300;
         _leftSidebarWidth = _config.State.LeftSidebarWidth > 0 ? _config.State.LeftSidebarWidth : 300;
@@ -329,7 +334,8 @@ public partial class MainWindow : Window
         _config.State.TagVideoSearchHasTags = ChkSearchVideoHasTags.IsChecked == true;
         _config.State.TagVideoSearchNoTitle = ChkSearchVideoNoTitle.IsChecked == true;
         _config.State.TagVideoSearchHasTitle = ChkSearchVideoHasTitle.IsChecked == true;
-        _config.State.TagChecklistSortByUsage = _tagChecklistSortByUsage;
+        _config.State.TagChecklistSort = _tagChecklistSort;
+        _config.State.TagChecklistSortByUsage = _tagChecklistSort == "usage";
         _config.State.TagFileListWrapTags = _tagFileListWrapTags;
         _config.State.RightSidebarWidth = _rightSidebarWidth;
         _config.State.LeftSidebarWidth = _leftSidebarWidth;
@@ -1196,12 +1202,13 @@ public partial class MainWindow : Window
             if (!allTags.TryGetValue(tagId, out var tag)) continue;
 
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
-            var bgBrush = string.IsNullOrEmpty(tag.Color) ? Theme.PanelBrush : new SolidColorBrush((Color)ColorConverter.ConvertFromString(tag.Color)!);
+            var bgColor = string.IsNullOrEmpty(tag.Color) ? Theme.PanelColor : (Color)ColorConverter.ConvertFromString(tag.Color)!;
+            var bgBrush = new SolidColorBrush(bgColor);
             var fgBrush = ContrastForeground(bgBrush);
             var pill = new Border
             {
                 Background = bgBrush,
-                BorderBrush = Theme.BorderBrush,
+                BorderBrush = Theme.TagChipOutlineBrush(bgColor),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(8, 2, 8, 2),
@@ -1306,12 +1313,13 @@ public partial class MainWindow : Window
             if (!allTags.TryGetValue(tagId, out var tag)) continue;
 
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
-            var bgBrush = string.IsNullOrEmpty(tag.Color) ? Theme.PanelBrush : new SolidColorBrush((Color)ColorConverter.ConvertFromString(tag.Color)!);
+            var bgColor = string.IsNullOrEmpty(tag.Color) ? Theme.PanelColor : (Color)ColorConverter.ConvertFromString(tag.Color)!;
+            var bgBrush = new SolidColorBrush(bgColor);
             var fgBrush = ContrastForeground(bgBrush);
             var pill = new Border
             {
                 Background = bgBrush,
-                BorderBrush = Theme.BorderBrush,
+                BorderBrush = Theme.TagChipOutlineBrush(bgColor),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 Padding = new Thickness(8, 2, 8, 2),
@@ -1515,7 +1523,7 @@ public partial class MainWindow : Window
     private List<string>? _tagFileListPanelBuiltFor;
     private bool _suppressTagFileListSelection;
 
-    private sealed record TagChipViewModel(string Name, System.Windows.Media.Brush Background, System.Windows.Media.Brush Foreground);
+    private sealed record TagChipViewModel(string Name, System.Windows.Media.Brush Background, System.Windows.Media.Brush Foreground, System.Windows.Media.Brush Border);
 
     private sealed record TagFileListItem(string Path, Func<string?> GetCurrentPath)
     {
@@ -1563,10 +1571,11 @@ public partial class MainWindow : Window
 
                 return [.. TagRepository.GetTagsForFile(entry.Id).Select(t =>
                 {
-                    System.Windows.Media.Brush bg = string.IsNullOrEmpty(t.Color)
-                        ? Theme.PanelBrush
-                        : new SolidColorBrush((Color)ColorConverter.ConvertFromString(t.Color)!);
-                    return new TagChipViewModel(t.Name, bg, ContrastForeground(bg));
+                    var bgColor = string.IsNullOrEmpty(t.Color)
+                        ? Theme.PanelColor
+                        : (Color)ColorConverter.ConvertFromString(t.Color)!;
+                    var bg = new SolidColorBrush(bgColor);
+                    return new TagChipViewModel(t.Name, bg, ContrastForeground(bg), Theme.TagChipOutlineBrush(bgColor));
                 })];
             }
         }
@@ -2003,10 +2012,11 @@ public partial class MainWindow : Window
 
                 return [.. TagRepository.GetTagsForFile(entry.Id, TagDomain.Video).Select(t =>
                 {
-                    System.Windows.Media.Brush bg = string.IsNullOrEmpty(t.Color)
-                        ? Theme.PanelBrush
-                        : new SolidColorBrush((Color)ColorConverter.ConvertFromString(t.Color)!);
-                    return new TagChipViewModel(t.Name, bg, ContrastForeground(bg));
+                    var bgColor = string.IsNullOrEmpty(t.Color)
+                        ? Theme.PanelColor
+                        : (Color)ColorConverter.ConvertFromString(t.Color)!;
+                    var bg = new SolidColorBrush(bgColor);
+                    return new TagChipViewModel(t.Name, bg, ContrastForeground(bg), Theme.TagChipOutlineBrush(bgColor));
                 })];
             }
         }
@@ -2440,15 +2450,16 @@ public partial class MainWindow : Window
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 4) };
 
-        var bgBrush = string.IsNullOrEmpty(tag.Color)
-            ? Theme.PanelBrush
-            : new SolidColorBrush((Color)ColorConverter.ConvertFromString(tag.Color)!);
+        var bgColor = string.IsNullOrEmpty(tag.Color)
+            ? Theme.PanelColor
+            : (Color)ColorConverter.ConvertFromString(tag.Color)!;
+        var bgBrush = new SolidColorBrush(bgColor);
         var fgBrush = ContrastForeground(bgBrush);
 
         var pill = new Border
         {
             Background = bgBrush,
-            BorderBrush = Theme.BorderBrush,
+            BorderBrush = Theme.TagChipOutlineBrush(bgColor),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(7, 1, 7, 1),
@@ -2506,12 +2517,25 @@ public partial class MainWindow : Window
             FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center
         });
-        var sortToggleBtn = CreateSidebarButton(_tagChecklistSortByUsage ? "通常順に戻す" : "件数順に並べる", () =>
+        var sortLabel = _tagChecklistSort switch
         {
-            _tagChecklistSortByUsage = !_tagChecklistSortByUsage;
+            "usage" => "並び: 件数順",
+            "name" => "並び: 名前順",
+            _ => "並び: 通常順"
+        };
+        var sortToggleBtn = CreateSidebarButton(sortLabel, () =>
+        {
+            // 通常順 → 件数順 → 名前順 → 通常順 … の順に切り替える
+            _tagChecklistSort = _tagChecklistSort switch
+            {
+                "default" => "usage",
+                "usage" => "name",
+                _ => "default"
+            };
             SaveStateOnly();
             RebuildSidebar();
         });
+        sortToggleBtn.ToolTip = "クリックで 通常順 → 件数順 → 名前順 を切り替え";
         sortToggleBtn.Padding = new Thickness(6, 0, 6, 0);
         sortToggleBtn.Margin = new Thickness(8, 0, 0, 0);
         checklistHeaderRow.Children.Add(sortToggleBtn);
@@ -2559,9 +2583,12 @@ public partial class MainWindow : Window
         void AddTagGrid(IReadOnlyList<Tag> tags, double indent)
         {
             if (tags.Count == 0) return;
-            var ordered = _tagChecklistSortByUsage
-                ? tags.OrderByDescending(t => usageCounts.GetValueOrDefault(t.Id)).ThenBy(t => t.SortOrder).ThenBy(t => t.Name)
-                : tags.AsEnumerable();
+            var ordered = _tagChecklistSort switch
+            {
+                "usage" => tags.OrderByDescending(t => usageCounts.GetValueOrDefault(t.Id)).ThenBy(t => t.SortOrder).ThenBy(t => t.Name),
+                "name" => tags.OrderBy(t => t.Name, NaturalStringComparer.Instance).ThenBy(t => t.SortOrder),
+                _ => tags.AsEnumerable()
+            };
             var grid = new UniformGrid { Columns = 2 };
             foreach (var tag in ordered)
                 grid.Children.Add(BuildCheckbox(tag));
