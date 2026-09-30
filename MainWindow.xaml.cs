@@ -5020,6 +5020,51 @@ public partial class MainWindow : Window
         }
     }
 
+    // 閲覧シークバー: 透明領域全体で受け、クリック位置へ即移動＋そのままドラッグ
+    private bool _viewerSeekDragging;
+
+    private void ViewerSeekArea_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_viewerOpen) return;
+        _viewerSeekDragging = true;
+        ViewerSeekArea.CaptureMouse();
+        ViewerSeekToPoint(e);
+        e.Handled = true; // Slider 標準の Thumb/RepeatButton 処理とダブルクリック閉じを抑止
+    }
+
+    private void ViewerSeekArea_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_viewerSeekDragging)
+            ViewerSeekToPoint(e);
+    }
+
+    private void ViewerSeekArea_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_viewerSeekDragging) return;
+        ViewerSeekArea.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void ViewerSeekArea_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _viewerSeekDragging = false;
+    }
+
+    private void ViewerSeekToPoint(MouseEventArgs e)
+    {
+        // Track.ValueFromPoint は「現在の Thumb 位置からの差分」で計算するため、
+        // 値変更直後（再レイアウト前）に呼ぶと行き過ぎる。トラック幅から絶対位置で求める。
+        if (ViewerSlider.Template?.FindName("PART_Track", ViewerSlider) is not Track track) return;
+        double thumbW = track.Thumb?.ActualWidth ?? 0;
+        double usable = track.ActualWidth - thumbW;
+        if (usable <= 0) return;
+        double ratio = Math.Clamp((e.GetPosition(track).X - thumbW / 2) / usable, 0, 1);
+        double value = ViewerSlider.Minimum + ratio * (ViewerSlider.Maximum - ViewerSlider.Minimum);
+        value = Math.Clamp(Math.Round(value), ViewerSlider.Minimum, ViewerSlider.Maximum);
+        if (value != ViewerSlider.Value)
+            ViewerSlider.Value = value;
+    }
+
     private void ViewerNavigate(int delta)
     {
         int newIdx = _viewerIndex + delta;

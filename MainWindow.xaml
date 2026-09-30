@@ -359,8 +359,15 @@
                             Background="{DynamicResource ThemePanelOverlay}" Opacity="0" IsHitTestVisible="True"
                             MouseEnter="ViewerBottomBar_MouseEnter" MouseLeave="ViewerBottomBar_MouseLeave">
                         <StackPanel VerticalAlignment="Center" Margin="16,0">
-                            <Slider x:Name="ViewerSlider" Minimum="0" Maximum="100"
-                                    ValueChanged="ViewerSlider_ValueChanged" Margin="0,0,0,4"/>
+                            <!-- 当たり判定を上下に広げるための透明領域。クリック/ドラッグはこの領域で処理する -->
+                            <Border x:Name="ViewerSeekArea" Background="Transparent" Padding="0,7"
+                                    PreviewMouseLeftButtonDown="ViewerSeekArea_MouseDown"
+                                    PreviewMouseMove="ViewerSeekArea_MouseMove"
+                                    PreviewMouseLeftButtonUp="ViewerSeekArea_MouseUp"
+                                    LostMouseCapture="ViewerSeekArea_LostMouseCapture">
+                                <Slider x:Name="ViewerSlider" Minimum="0" Maximum="100"
+                                        ValueChanged="ViewerSlider_ValueChanged"/>
+                            </Border>
                             <TextBlock x:Name="ViewerInfo" Foreground="{DynamicResource ThemeSubtext}"
                                        FontFamily="Yu Gothic UI" FontSize="13" HorizontalAlignment="Center"/>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
@@ -404,7 +411,7 @@
                                 <TextBlock x:Name="VideoTimeText" DockPanel.Dock="Right" Foreground="{DynamicResource ThemeSubtext}"
                                            FontFamily="Yu Gothic UI" FontSize="12" VerticalAlignment="Center"
                                            Margin="8,0,0,0" Text="00:00 / 00:00"/>
-                                <Canvas x:Name="SeekBarCanvas" Height="16" Background="Transparent"
+                                <Canvas x:Name="SeekBarCanvas" Height="26" Background="Transparent"
                                         MouseLeftButtonDown="SeekBar_MouseDown" MouseMove="SeekBar_MouseMove"
                                         MouseLeftButtonUp="SeekBar_MouseUp"/>
                             </DockPanel>
