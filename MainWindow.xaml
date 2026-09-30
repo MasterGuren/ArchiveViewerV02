@@ -213,10 +213,10 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Image Source="img/logo_full4.png" Height="28" VerticalAlignment="Center" Margin="0,0,8,0" RenderOptions.BitmapScalingMode="HighQuality" Opacity="0.8"/>
-                    <ToggleButton x:Name="BtnRating" Content="閲覧" Style="{StaticResource ModeButton}" Click="BtnRating_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnRating" Content="閲覧" Style="{StaticResource ModeButton}" Click="BtnRating_Click" Margin="0,0,2,0" Visibility="Collapsed"/>
                     <ToggleButton x:Name="BtnExtract" Content="抽出" Style="{StaticResource ModeButton}" Click="BtnExtract_Click" Margin="0,0,2,0"/>
-                    <ToggleButton x:Name="BtnVideo" Content="動画" Style="{StaticResource ModeButton}" Click="BtnVideo_Click" Margin="0,0,2,0"/>
-                    <ToggleButton x:Name="BtnImage" Content="画像" Style="{StaticResource ModeButton}" Click="BtnImage_Click" Margin="0,0,2,0"/>
+                    <ToggleButton x:Name="BtnVideo" Content="動画" Style="{StaticResource ModeButton}" Click="BtnVideo_Click" Margin="0,0,2,0" Visibility="Collapsed"/>
+                    <ToggleButton x:Name="BtnImage" Content="画像" Style="{StaticResource ModeButton}" Click="BtnImage_Click" Margin="0,0,2,0" Visibility="Collapsed"/>
                     <ToggleButton x:Name="BtnTag" Content="タグ閲覧" Style="{StaticResource ModeButton}" Click="BtnTag_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnTagVideo" Content="タグ動画" Style="{StaticResource ModeButton}" Click="BtnTagVideo_Click" Margin="0,0,2,0"/>
                     <ToggleButton x:Name="BtnBrowse" Content="旧閲覧" Style="{StaticResource ModeButton}" Click="BtnBrowse_Click" Margin="0,0,12,0" Visibility="Collapsed"/>

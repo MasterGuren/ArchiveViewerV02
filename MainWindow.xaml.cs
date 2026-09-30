@@ -6002,15 +6002,12 @@ public partial class MainWindow : Window
         {
             Directory.CreateDirectory(_extractOutputFolder);
             int count = 0;
-            foreach (var entry in _extractEntries.Where(en => !en.Extracted))
+            for (int i = 0; i < _extractEntries.Count; i++)
             {
-                var parts = new List<string>();
-                if (!string.IsNullOrEmpty(entry.Author)) parts.Add(entry.Author);
-                if (!string.IsNullOrEmpty(entry.Title)) parts.Add(entry.Title);
-                if (!string.IsNullOrEmpty(entry.Episode)) parts.Add(entry.Episode);
-                parts.Add(Path.GetFileNameWithoutExtension(_archivePath));
+                var entry = _extractEntries[i];
+                if (entry.Extracted) continue;
 
-                var fileName = string.Join("_", parts) + ".zip";
+                var fileName = BuildExtractFileName(entry, i, _archivePath);
                 var outputPath = Path.Combine(_extractOutputFolder, fileName);
 
                 // Unique filename
@@ -6037,6 +6034,25 @@ public partial class MainWindow : Window
         {
             ShowError($"抽出に失敗しました:\n{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 抽出ZIPのファイル名。著者・作品・話がすべて空欄なら「元ファイル名_リスト上の位置(2桁)」、
+    /// どれか入力があれば「著者_作品_話_元ファイル名」（空欄は省く）。
+    /// </summary>
+    private static string BuildExtractFileName(ExtractEntry entry, int listIndex, string? archivePath)
+    {
+        var archiveStem = archivePath != null ? Path.GetFileNameWithoutExtension(archivePath) : "";
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(entry.Author)) parts.Add(entry.Author);
+        if (!string.IsNullOrEmpty(entry.Title)) parts.Add(entry.Title);
+        if (!string.IsNullOrEmpty(entry.Episode)) parts.Add(entry.Episode);
+
+        if (parts.Count == 0)
+            return $"{archiveStem}_{listIndex + 1:00}.zip";
+
+        if (archivePath != null) parts.Add(archiveStem);
+        return string.Join("_", parts) + ".zip";
     }
 
     private void RebuildExtractList()
@@ -6084,12 +6100,7 @@ public partial class MainWindow : Window
             AddExtractField(panel, "話", entry.Episode, v => entry.Episode = v);
 
             // Preview
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(entry.Author)) parts.Add(entry.Author);
-            if (!string.IsNullOrEmpty(entry.Title)) parts.Add(entry.Title);
-            if (!string.IsNullOrEmpty(entry.Episode)) parts.Add(entry.Episode);
-            if (_archivePath != null) parts.Add(Path.GetFileNameWithoutExtension(_archivePath));
-            var preview = string.Join("_", parts) + ".zip";
+            var preview = BuildExtractFileName(entry, idx, _archivePath);
             panel.Children.Add(new TextBlock
             {
                 Text = $"→ {preview}",
@@ -6944,10 +6955,16 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_mode == "video" || Theme.VideoExtensions.Contains(ext))
+        // 動画・アーカイブはタグ動画／タグ閲覧モードで開く（ファイル一覧には追加しない）。
+        // Dropハンドラ内はOLEのDoDragDropコールバック中なので、VLC/HWND生成やアーカイブ読込は
+        // BeginInvokeでコールバックを抜けてから行う。
+        if (Theme.VideoExtensions.Contains(ext))
         {
-            if (_mode != "video") SwitchMode("video");
-            PlayVideo(file);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_mode != "tagvideo") SwitchMode("tagvideo");
+                PlayVideo(file, trackSiblings: false);
+            });
         }
         else if (Theme.ImageExtensions.Contains(ext))
         {
@@ -6956,9 +6973,12 @@ public partial class MainWindow : Window
         }
         else if (Theme.ArchiveExtensions.Contains(ext))
         {
-            if (_mode == "video") SwitchMode("browse");
-            _folderRoot = null;
-            LoadArchive(file);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (_mode != "tag") SwitchMode("tag");
+                _folderRoot = null;
+                LoadArchive(file);
+            });
         }
     }
 
