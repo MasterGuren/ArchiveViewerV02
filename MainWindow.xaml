@@ -351,10 +351,22 @@
                 </Border>
 
                 <!-- Image Viewer Overlay -->
+                <!-- 拡大表示中は画像がはみ出すのでClipToBoundsで閲覧領域内に収める -->
                 <Grid x:Name="ViewerOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeBg}"
+                      ClipToBounds="True"
                       MouseLeftButtonDown="ViewerOverlay_MouseLeftButtonDown"
-                      MouseMove="ViewerOverlay_MouseMove">
-                    <Image x:Name="ViewerImage" Stretch="Uniform" Margin="8"/>
+                      MouseLeftButtonUp="ViewerOverlay_MouseLeftButtonUp"
+                      MouseMove="ViewerOverlay_MouseMove"
+                      LostMouseCapture="ViewerOverlay_LostMouseCapture"
+                      SizeChanged="ViewerOverlay_SizeChanged">
+                    <Image x:Name="ViewerImage" Stretch="Uniform" Margin="8" RenderTransformOrigin="0,0">
+                        <Image.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="ViewerImageScale"/>
+                                <TranslateTransform x:Name="ViewerImageTranslate"/>
+                            </TransformGroup>
+                        </Image.RenderTransform>
+                    </Image>
                     <Border x:Name="ViewerBottomBar" VerticalAlignment="Bottom" Height="96"
                             Background="{DynamicResource ThemePanelOverlay}" Opacity="0" IsHitTestVisible="True"
                             MouseEnter="ViewerBottomBar_MouseEnter" MouseLeave="ViewerBottomBar_MouseLeave">
@@ -389,6 +401,17 @@
                                              Click="ImageScaleMode_Click" Tag="NearestNeighbor"
                                              Foreground="{DynamicResource ThemeText}" FontFamily="Yu Gothic UI" FontSize="11"
                                              VerticalAlignment="Center" Margin="2,0"/>
+                                <TextBlock Text="拡大:" Foreground="{DynamicResource ThemeSubtext}"
+                                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center" Margin="16,0,4,0"/>
+                                <Button Content="－" Style="{StaticResource DarkButton}" Click="BtnViewerZoomOut_Click"
+                                        Padding="6,0" FontSize="11" Margin="1,0" ToolTip="縮小（Ctrl+ホイール）"/>
+                                <TextBlock x:Name="ViewerZoomText" Text="100%" Foreground="{DynamicResource ThemeText}"
+                                           FontFamily="Yu Gothic UI" FontSize="11" VerticalAlignment="Center"
+                                           MinWidth="40" TextAlignment="Center"/>
+                                <Button Content="＋" Style="{StaticResource DarkButton}" Click="BtnViewerZoomIn_Click"
+                                        Padding="6,0" FontSize="11" Margin="1,0" ToolTip="拡大（Ctrl+ホイール）"/>
+                                <Button Content="全体" Style="{StaticResource DarkButton}" Click="BtnViewerZoomFit_Click"
+                                        Padding="6,0" FontSize="11" Margin="4,0,0,0" ToolTip="全体表示に戻す（拡大中にダブルクリックでも可）"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -582,7 +605,10 @@
                                  SelectionChanged="TagFileListPanel_SelectionChanged"
                                  MouseDoubleClick="TagFileListPanel_MouseDoubleClick">
                             <ListBox.ContextMenu>
-                                <ContextMenu>
+                                <ContextMenu Opened="TagFileListContextMenu_Opened">
+                                    <MenuItem x:Name="MenuCopyTagFileTags" Header="タグをコピー" Click="BtnCopyTagFileTags_Click"/>
+                                    <MenuItem x:Name="MenuPasteTagFileTags" Header="タグを貼り付け" Click="BtnPasteTagFileTags_Click"/>
+                                    <Separator/>
                                     <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagFiles_Click"/>
                                     <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagFiles_Click"/>
                                 </ContextMenu>
@@ -666,7 +692,10 @@
                                  SelectionChanged="TagVideoFileListPanel_SelectionChanged"
                                  MouseDoubleClick="TagVideoFileListPanel_MouseDoubleClick">
                             <ListBox.ContextMenu>
-                                <ContextMenu>
+                                <ContextMenu Opened="TagVideoFileListContextMenu_Opened">
+                                    <MenuItem x:Name="MenuCopyTagVideoFileTags" Header="タグをコピー" Click="BtnCopyTagVideoFileTags_Click"/>
+                                    <MenuItem x:Name="MenuPasteTagVideoFileTags" Header="タグを貼り付け" Click="BtnPasteTagVideoFileTags_Click"/>
+                                    <Separator/>
                                     <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagVideoFiles_Click"/>
                                     <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagVideoFiles_Click"/>
                                 </ContextMenu>

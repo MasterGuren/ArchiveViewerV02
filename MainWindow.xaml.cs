@@ -1599,8 +1599,16 @@ public partial class MainWindow : Window
         if (forceRefreshContent || !ReferenceEquals(_tagFileListPanelBuiltFor, _tagFileList))
         {
             var panelSw = System.Diagnostics.Stopwatch.StartNew();
+            // 表示だけの更新（タグ付け・貼り付け直後など）では複数選択をそのまま残し、続けて操作できるようにする
+            var selectedPaths = forceRefreshContent
+                ? TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : null;
             _suppressTagFileListSelection = true;
-            TagFileListPanel.ItemsSource = _tagFileList.Select(p => new TagFileListItem(p, () => _archivePath)).ToList();
+            var items = _tagFileList.Select(p => new TagFileListItem(p, () => _archivePath)).ToList();
+            TagFileListPanel.ItemsSource = items;
+            if (selectedPaths is { Count: > 0 })
+                foreach (var item in items.Where(i => selectedPaths.Contains(i.Path)))
+                    TagFileListPanel.SelectedItems.Add(item);
             _tagFileListPanelBuiltFor = _tagFileList;
             _suppressTagFileListSelection = false;
             TagScanLog($"[TagScan] 右サイドバー一覧の描画完了（{_tagFileList.Count:N0}件, 経過{panelSw.Elapsed.TotalSeconds:F1}秒）");
@@ -1664,6 +1672,24 @@ public partial class MainWindow : Window
     {
         var paths = TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToList();
         BulkDeleteTagFiles(paths);
+    }
+
+    /// <summary>右クリックメニューを開くたびに、選択数とコピー済みタグの有無からコピー/貼り付け項目の有効状態を決める。</summary>
+    private void TagFileListContextMenu_Opened(object sender, RoutedEventArgs e)
+        => UpdateTagClipboardMenuItems(MenuCopyTagFileTags, MenuPasteTagFileTags, TagFileListPanel.SelectedItems.Count, TagDomain.Image);
+
+    /// <summary>右クリックメニューから、1件だけ選択しているファイルのタグを控える。</summary>
+    private void BtnCopyTagFileTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (TagFileListPanel.SelectedItems.Count != 1) return;
+        CopyTagsFromFile(((TagFileListItem)TagFileListPanel.SelectedItems[0]!).Path, TagDomain.Image);
+    }
+
+    /// <summary>右クリックメニューから、控えておいたタグを選択中の全ファイルへ追加する。</summary>
+    private void BtnPasteTagFileTags_Click(object sender, RoutedEventArgs e)
+    {
+        var paths = TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToList();
+        PasteTagsToFiles(paths, TagDomain.Image);
     }
 
     /// <summary>
@@ -2030,8 +2056,16 @@ public partial class MainWindow : Window
     {
         if (forceRefreshContent || !ReferenceEquals(_tagVideoFileListPanelBuiltFor, _tagVideoFileList))
         {
+            // 表示だけの更新（タグ付け・貼り付け直後など）では複数選択をそのまま残し、続けて操作できるようにする
+            var selectedPaths = forceRefreshContent
+                ? TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : null;
             _suppressTagVideoFileListSelection = true;
-            TagVideoFileListPanel.ItemsSource = _tagVideoFileList.Select(p => new TagVideoFileListItem(p, () => _videoPath)).ToList();
+            var items = _tagVideoFileList.Select(p => new TagVideoFileListItem(p, () => _videoPath)).ToList();
+            TagVideoFileListPanel.ItemsSource = items;
+            if (selectedPaths is { Count: > 0 })
+                foreach (var item in items.Where(i => selectedPaths.Contains(i.Path)))
+                    TagVideoFileListPanel.SelectedItems.Add(item);
             _tagVideoFileListPanelBuiltFor = _tagVideoFileList;
             _suppressTagVideoFileListSelection = false;
         }
@@ -2092,6 +2126,21 @@ public partial class MainWindow : Window
     {
         var paths = TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToList();
         BulkDeleteTagFiles(paths);
+    }
+
+    private void TagVideoFileListContextMenu_Opened(object sender, RoutedEventArgs e)
+        => UpdateTagClipboardMenuItems(MenuCopyTagVideoFileTags, MenuPasteTagVideoFileTags, TagVideoFileListPanel.SelectedItems.Count, TagDomain.Video);
+
+    private void BtnCopyTagVideoFileTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (TagVideoFileListPanel.SelectedItems.Count != 1) return;
+        CopyTagsFromFile(((TagVideoFileListItem)TagVideoFileListPanel.SelectedItems[0]!).Path, TagDomain.Video);
+    }
+
+    private void BtnPasteTagVideoFileTags_Click(object sender, RoutedEventArgs e)
+    {
+        var paths = TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToList();
+        PasteTagsToFiles(paths, TagDomain.Video);
     }
 
     private void BtnToggleTagWrap_Click(object sender, RoutedEventArgs e)
@@ -2795,6 +2844,85 @@ public partial class MainWindow : Window
         }
 
         SetStatus($"{identities.Count}件のファイルにタグを適用しました");
+        RebuildSidebar();
+        RefreshCurrentTagFileListDisplay();
+    }
+
+    // ======== タグのコピー＆貼り付け（ファイル一覧の右クリックメニュー） ========
+
+    /// <summary>
+    /// 「タグをコピー」で控えたタグ。画像用と動画用でタグIDは別テーブルなので、どちらのドメインでコピーしたかも持ち、
+    /// 同じドメインのファイル一覧でしか貼り付けできないようにする。名前とコピー元はメニューのツールチップ表示用。
+    /// </summary>
+    private HashSet<long>? _copiedTagIds;
+    private TagDomain _copiedTagDomain;
+    private List<string> _copiedTagNames = [];
+    private string _copiedTagSourceName = "";
+
+    /// <summary>
+    /// コピーは「1件だけ選択しているとき」のみ、貼り付けは「同じドメインでコピー済み、かつ1件以上選択しているとき」のみ有効にする。
+    /// </summary>
+    private void UpdateTagClipboardMenuItems(MenuItem copyItem, MenuItem pasteItem, int selectedCount, TagDomain domain)
+    {
+        copyItem.IsEnabled = selectedCount == 1;
+
+        var canPaste = _copiedTagIds is { Count: > 0 } && _copiedTagDomain == domain && selectedCount > 0;
+        pasteItem.IsEnabled = canPaste;
+        pasteItem.Header = canPaste ? $"タグを貼り付け（{_copiedTagIds!.Count}個）" : "タグを貼り付け";
+        pasteItem.ToolTip = canPaste ? $"コピー元: {_copiedTagSourceName}\n{string.Join(", ", _copiedTagNames)}" : null;
+    }
+
+    /// <summary>指定ファイルに設定されているタグを控える。タグが1つも無ければ、前回コピーした内容は上書きしない。</summary>
+    private void CopyTagsFromFile(string path, TagDomain domain)
+    {
+        var identity = GetFileIdentity(path);
+        var entry = identity == null ? null
+            : TagRepository.FindFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks, domain);
+        List<Tag> tags = entry == null ? [] : TagRepository.GetTagsForFile(entry.Id, domain);
+        var fileName = Path.GetFileName(path);
+        if (tags.Count == 0)
+        {
+            SetStatus($"「{fileName}」にはタグが設定されていません");
+            return;
+        }
+
+        _copiedTagIds = [.. tags.Select(t => t.Id)];
+        _copiedTagDomain = domain;
+        _copiedTagNames = [.. tags.Select(t => t.Name)];
+        _copiedTagSourceName = fileName;
+        SetStatus($"「{fileName}」のタグ{tags.Count}個をコピーしました: {string.Join(", ", _copiedTagNames)}");
+    }
+
+    /// <summary>
+    /// 控えておいたタグを選択中の全ファイルへ追加する（貼り付け）。既に付いているタグはそのまま、
+    /// 各ファイルに元から付いている別のタグも消さない「追加のみ」の操作。
+    /// </summary>
+    private void PasteTagsToFiles(List<string> paths, TagDomain domain)
+    {
+        if (paths.Count == 0 || _copiedTagIds is not { Count: > 0 } || _copiedTagDomain != domain) return;
+
+        // コピーした後にタグ管理で削除されたタグは付けようがないので除外する
+        var existingIds = TagRepository.GetAllTags(domain).Select(t => t.Id).ToHashSet();
+        var tagIds = _copiedTagIds.Where(existingIds.Contains).ToList();
+        if (tagIds.Count == 0)
+        {
+            _copiedTagIds = null;
+            SetStatus("コピーしたタグは既に削除されています");
+            return;
+        }
+
+        int applied = 0;
+        foreach (var path in paths)
+        {
+            var identity = GetFileIdentity(path);
+            if (identity == null) continue;
+            var entryId = TagRepository.GetOrCreateFileEntry(identity.Value.Path, identity.Value.Size, identity.Value.Ticks, domain);
+            foreach (var id in tagIds) TagRepository.AddFileTag(entryId, id, domain);
+            applied++;
+        }
+        if (applied == 0) return;
+
+        SetStatus($"{applied}件のファイルにタグ{tagIds.Count}個を貼り付けました");
         RebuildSidebar();
         RefreshCurrentTagFileListDisplay();
     }
@@ -4892,6 +5020,7 @@ public partial class MainWindow : Window
             ViewerImage.Source = ThumbnailService.LoadFullImage(data);
         }
 
+        ResetViewerZoom(); // 画像が変わったら拡大は解除して全体表示に戻す
         ViewerInfo.Text = $"{containerName} — {fileName} ({index + 1}/{_imageNames.Count})";
         TxtStatus.Text = $"{containerName} — {fileName}";
 
@@ -4933,6 +5062,7 @@ public partial class MainWindow : Window
     private void CloseViewer()
     {
         _viewerOpen = false;
+        ResetViewerZoom();
         WpfAnimatedGif.ImageBehavior.SetAnimatedSource(ViewerImage, null);
         ViewerOverlay.Visibility = Visibility.Collapsed;
         HeaderBar.Visibility = Visibility.Visible;
@@ -4955,7 +5085,157 @@ public partial class MainWindow : Window
     private void ViewerOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
-            CloseViewer();
+        {
+            // 拡大中なら全体表示に戻すだけ。全体表示のときは従来どおり閉じる
+            if (_viewerZoom > 1) ResetViewerZoom();
+            else CloseViewer();
+            return;
+        }
+        // 拡大中は画像をドラッグして表示位置を動かせる（下部バーの上は除く）
+        if (_viewerZoom > 1 && !(ViewerBottomBar.Opacity > 0 && ViewerBottomBar.IsMouseOver))
+        {
+            _viewerPanning = true;
+            _viewerPanLast = e.GetPosition(ViewerOverlay);
+            ViewerOverlay.CaptureMouse();
+            ViewerOverlay.Cursor = Cursors.SizeAll;
+        }
+    }
+
+    private void ViewerOverlay_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_viewerPanning) ViewerOverlay.ReleaseMouseCapture();
+    }
+
+    private void ViewerOverlay_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _viewerPanning = false;
+        UpdateViewerCursor();
+    }
+
+    private void ViewerOverlay_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_viewerZoom > 1) ClampViewerPan();
+    }
+
+    // ======== 閲覧画像の拡大表示 ========
+    // Ctrl+ホイール/下部バーのボタンで拡大縮小、ドラッグで移動。拡大中のホイールは上下スクロールで、
+    // 上下端まで来たら拡大率を保ったまま前後のページへ移る。
+
+    private const double ViewerZoomStep = 1.25;
+    private const double ViewerZoomMax = 16;
+    /// <summary>ウィンドウに収まる全体表示を1とした拡大率。</summary>
+    private double _viewerZoom = 1;
+    private bool _viewerPanning;
+    private System.Windows.Point _viewerPanLast;
+
+    /// <summary>Ctrl+ホイール: カーソル位置を中心に拡大縮小する。</summary>
+    private void ZoomViewer(int direction, MouseEventArgs e)
+        => ZoomViewerAt(direction, e.GetPosition(ViewerImage));
+
+    /// <summary>下部バーのボタン: 閲覧領域の中央を中心に拡大縮小する。</summary>
+    private void ZoomViewerAtCenter(int direction)
+    {
+        var center = new System.Windows.Point(ViewerOverlay.ActualWidth / 2, ViewerOverlay.ActualHeight / 2);
+        ZoomViewerAt(direction, ViewerOverlay.TranslatePoint(center, ViewerImage));
+    }
+
+    /// <summary>
+    /// 画像内の点 p（RenderTransform適用前の画像内座標）が拡大縮小後も同じ画面位置に留まるように拡大率を1段階変える。
+    /// </summary>
+    private void ZoomViewerAt(int direction, System.Windows.Point p)
+    {
+        if (ViewerImage.Source == null || ViewerImage.ActualWidth <= 0) return;
+        double newZoom = Math.Clamp(direction > 0 ? _viewerZoom * ViewerZoomStep : _viewerZoom / ViewerZoomStep, 1, ViewerZoomMax);
+        if (Math.Abs(newZoom - 1) < 0.01) newZoom = 1;
+        if (newZoom == _viewerZoom) return;
+
+        ViewerImageTranslate.X += (_viewerZoom - newZoom) * p.X;
+        ViewerImageTranslate.Y += (_viewerZoom - newZoom) * p.Y;
+        SetViewerZoom(newZoom);
+        ClampViewerPan();
+    }
+
+    private void SetViewerZoom(double zoom)
+    {
+        _viewerZoom = zoom;
+        ViewerImageScale.ScaleX = ViewerImageScale.ScaleY = zoom;
+        ViewerZoomText.Text = $"{zoom * 100:0}%";
+        UpdateViewerCursor();
+    }
+
+    private void ResetViewerZoom()
+    {
+        if (_viewerPanning) ViewerOverlay.ReleaseMouseCapture();
+        ViewerImageTranslate.X = ViewerImageTranslate.Y = 0;
+        SetViewerZoom(1);
+    }
+
+    private void BtnViewerZoomIn_Click(object sender, RoutedEventArgs e) => ZoomViewerAtCenter(1);
+    private void BtnViewerZoomOut_Click(object sender, RoutedEventArgs e) => ZoomViewerAtCenter(-1);
+    private void BtnViewerZoomFit_Click(object sender, RoutedEventArgs e) => ResetViewerZoom();
+
+    /// <summary>
+    /// 1枚表示中のホイール。全体表示ならページ送り。拡大中は上下スクロール（Shift併用で左右）し、
+    /// 既に上下端までスクロールしていればその方向の前後ページへ拡大率を保ったまま移る。
+    /// </summary>
+    private void ViewerWheel(MouseWheelEventArgs e)
+    {
+        int pageDelta = e.Delta > 0 ? -1 : 1;
+        if (_viewerZoom <= 1)
+        {
+            ViewerNavigate(pageDelta);
+            return;
+        }
+
+        double step = e.Delta * 2;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            ViewerImageTranslate.X += step;
+            ClampViewerPan();
+            return;
+        }
+
+        double before = ViewerImageTranslate.Y;
+        ViewerImageTranslate.Y += step;
+        ClampViewerPan();
+        if (Math.Abs(ViewerImageTranslate.Y - before) < 0.5)
+            ViewerNavigate(pageDelta, keepZoom: true);
+    }
+
+    /// <summary>
+    /// ページ移動後に拡大率と左右位置を引き継ぐ。次のページへ進んだときは上端から、前のページへ戻ったときは下端から表示する。
+    /// </summary>
+    private void RestoreViewerZoomAfterPageTurn(double zoom, double translateX, bool forward)
+    {
+        ViewerOverlay.UpdateLayout(); // 新しい画像のサイズで位置を計算するため、先にレイアウトを確定させる
+        SetViewerZoom(zoom);
+        ViewerImageTranslate.X = translateX;
+        ViewerImageTranslate.Y = forward ? double.MaxValue : double.MinValue;
+        ClampViewerPan();
+    }
+
+    /// <summary>
+    /// 拡大した画像が閲覧領域より大きい方向は端に余白が出ない範囲に、小さい方向は中央に寄せる。
+    /// </summary>
+    private void ClampViewerPan()
+    {
+        double w = ViewerImage.ActualWidth, h = ViewerImage.ActualHeight;
+        double areaW = ViewerOverlay.ActualWidth, areaH = ViewerOverlay.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+        // 画像は閲覧領域の中央に配置されている（Stretch=Uniform + 既定の中央揃え）
+        double ox = (areaW - w) / 2, oy = (areaH - h) / 2;
+        ViewerImageTranslate.X = ClampAxis(ViewerImageTranslate.X, w * _viewerZoom, w, ox, areaW);
+        ViewerImageTranslate.Y = ClampAxis(ViewerImageTranslate.Y, h * _viewerZoom, h, oy, areaH);
+
+        static double ClampAxis(double t, double scaled, double size, double offset, double area)
+            => scaled <= area
+                ? (size - scaled) / 2
+                : Math.Clamp(t, area - offset - scaled, -offset);
+    }
+
+    private void UpdateViewerCursor()
+    {
+        ViewerOverlay.Cursor = _viewerPanning ? Cursors.SizeAll : _viewerZoom > 1 ? Cursors.Hand : null;
     }
 
     private DispatcherTimer? _viewerBarHideTimer;
@@ -4963,6 +5243,14 @@ public partial class MainWindow : Window
     private void ViewerOverlay_MouseMove(object sender, MouseEventArgs e)
     {
         var pos = e.GetPosition(ViewerOverlay);
+        if (_viewerPanning)
+        {
+            ViewerImageTranslate.X += pos.X - _viewerPanLast.X;
+            ViewerImageTranslate.Y += pos.Y - _viewerPanLast.Y;
+            _viewerPanLast = pos;
+            ClampViewerPan();
+            return;
+        }
         var height = ViewerOverlay.ActualHeight;
 
         if (height - pos.Y <= 80)
@@ -5065,16 +5353,20 @@ public partial class MainWindow : Window
             ViewerSlider.Value = value;
     }
 
-    private void ViewerNavigate(int delta)
+    private void ViewerNavigate(int delta, bool keepZoom = false)
     {
         int newIdx = _viewerIndex + delta;
         if (newIdx >= 0 && newIdx < _imageNames.Count)
         {
+            // LoadViewerImageは拡大を解除するので、引き継ぐ場合は先に控えておく
+            double zoom = _viewerZoom, translateX = ViewerImageTranslate.X;
             _viewerIndex = newIdx;
             _sliderUpdating = true;
             ViewerSlider.Value = newIdx;
             _sliderUpdating = false;
             LoadViewerImage(newIdx);
+            if (keepZoom && zoom > 1)
+                RestoreViewerZoomAfterPageTurn(zoom, translateX, delta > 0);
         }
     }
 
@@ -6869,7 +7161,11 @@ public partial class MainWindow : Window
 
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
-            ZoomThumbnails(e.Delta > 0 ? 1 : -1);
+            // 1枚表示中は画像そのものを拡大縮小する（サイドバー上は従来どおりサムネイルサイズ変更）
+            if (_viewerOpen && ViewerOverlay.IsMouseOver)
+                ZoomViewer(e.Delta > 0 ? 1 : -1, e);
+            else
+                ZoomThumbnails(e.Delta > 0 ? 1 : -1);
             e.Handled = true;
             return;
         }
@@ -6917,7 +7213,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                ViewerNavigate(e.Delta > 0 ? -1 : 1);
+                ViewerWheel(e);
             }
             e.Handled = true;
         }
