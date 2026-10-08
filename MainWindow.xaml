@@ -338,6 +338,15 @@
                                FontFamily="Yu Gothic UI" FontSize="14" HorizontalAlignment="Center" Margin="0,8,0,0"/>
                 </StackPanel>
 
+                <!-- 展開をキャンセルした後の表示。ファイル自体は開いたままなので、移動・タグ付け・再展開ができる -->
+                <StackPanel x:Name="LoadCancelledPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Visibility="Collapsed">
+                    <TextBlock Text="展開をキャンセルしました" Foreground="{DynamicResource ThemeSubtext}"
+                               FontFamily="Yu Gothic UI" FontSize="14" HorizontalAlignment="Center"/>
+                    <Button Content="▶ 再展開" Click="BtnReloadArchive_Click" Padding="16,4" Margin="0,10,0,0"
+                            HorizontalAlignment="Center" Style="{StaticResource AccentButton}"/>
+                </StackPanel>
+
                 <!-- ZIndexで最前面に固定する。宣言順だけだとViewerOverlay/VideoOverlayの裏に回り、
                      ビューアーを開いたままの切り替えや動画の読み込み中に進捗が一切見えなくなる。 -->
                 <Border x:Name="ProgressOverlay" Panel.ZIndex="10"
@@ -347,6 +356,9 @@
                                      Foreground="{DynamicResource ThemeAccent}" Background="{DynamicResource ThemePanel}"/>
                         <TextBlock x:Name="ProgressText" Text="読み込み中..." Foreground="{DynamicResource ThemeText}"
                                    FontFamily="Yu Gothic UI" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                        <Button x:Name="BtnCancelLoad" Content="✕ キャンセル" Click="BtnCancelLoad_Click" Padding="16,4" Margin="0,10,0,0"
+                                HorizontalAlignment="Center" Visibility="Collapsed"
+                                Background="{DynamicResource ThemePanel}" Foreground="{DynamicResource ThemeText}" BorderBrush="{DynamicResource ThemeBorder}"/>
                     </StackPanel>
                 </Border>
 
@@ -609,6 +621,9 @@
                                     <MenuItem x:Name="MenuCopyTagFileTags" Header="タグをコピー" Click="BtnCopyTagFileTags_Click"/>
                                     <MenuItem x:Name="MenuPasteTagFileTags" Header="タグを貼り付け" Click="BtnPasteTagFileTags_Click"/>
                                     <Separator/>
+                                    <MenuItem x:Name="MenuOpenTagFileInExplorer" Header="エクスプローラーで開く" Click="BtnOpenTagFileInExplorer_Click"/>
+                                    <MenuItem x:Name="MenuOpenTagFileWithDefault" Header="既定のプログラムで開く" Click="BtnOpenTagFileWithDefault_Click"/>
+                                    <Separator/>
                                     <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagFiles_Click"/>
                                     <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagFiles_Click"/>
                                 </ContextMenu>
@@ -695,6 +710,9 @@
                                 <ContextMenu Opened="TagVideoFileListContextMenu_Opened">
                                     <MenuItem x:Name="MenuCopyTagVideoFileTags" Header="タグをコピー" Click="BtnCopyTagVideoFileTags_Click"/>
                                     <MenuItem x:Name="MenuPasteTagVideoFileTags" Header="タグを貼り付け" Click="BtnPasteTagVideoFileTags_Click"/>
+                                    <Separator/>
+                                    <MenuItem x:Name="MenuOpenTagVideoFileInExplorer" Header="エクスプローラーで開く" Click="BtnOpenTagVideoFileInExplorer_Click"/>
+                                    <MenuItem x:Name="MenuOpenTagVideoFileWithDefault" Header="既定のプログラムで開く" Click="BtnOpenTagVideoFileWithDefault_Click"/>
                                     <Separator/>
                                     <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagVideoFiles_Click"/>
                                     <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagVideoFiles_Click"/>

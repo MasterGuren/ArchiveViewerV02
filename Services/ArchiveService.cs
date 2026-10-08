@@ -11,7 +11,8 @@ namespace ArchiveViewer.Services;
 public interface IArchiveReader : IDisposable
 {
     List<string> GetImageNames();
-    byte[] ReadEntry(string name);
+    /// <param name="ct">キャンセル時、外部プロセスで展開している実装（7z）はプロセスを止めてファイルを手放す。</param>
+    byte[] ReadEntry(string name, CancellationToken ct = default);
 }
 
 public class ZipArchiveReader : IArchiveReader
@@ -42,7 +43,7 @@ public class ZipArchiveReader : IArchiveReader
             .ToList();
     }
 
-    public byte[] ReadEntry(string name)
+    public byte[] ReadEntry(string name, CancellationToken ct = default)
     {
         var entry = _archive.GetEntry(name);
         if (entry == null) return [];
@@ -75,7 +76,7 @@ public class RarArchiveReader : IArchiveReader
             .ToList();
     }
 
-    public byte[] ReadEntry(string name)
+    public byte[] ReadEntry(string name, CancellationToken ct = default)
     {
         var entry = _archive.Entries.FirstOrDefault(e => e.Key == name);
         if (entry == null) return [];
@@ -144,7 +145,7 @@ public class SevenZipArchiveReader : IArchiveReader
         return _names;
     }
 
-    public byte[] ReadEntry(string name)
+    public byte[] ReadEntry(string name, CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo
         {
@@ -156,9 +157,12 @@ public class SevenZipArchiveReader : IArchiveReader
         };
 
         using var proc = Process.Start(psi)!;
+        // ソリッド書庫だと1エントリの展開に時間がかかるため、キャンセルされたら7zを止めて読み取りを打ち切る
+        using var killOnCancel = ct.Register(() => { try { proc.Kill(); } catch { } });
         using var ms = new MemoryStream();
         proc.StandardOutput.BaseStream.CopyTo(ms);
         proc.WaitForExit();
+        ct.ThrowIfCancellationRequested();
         return ms.ToArray();
     }
 

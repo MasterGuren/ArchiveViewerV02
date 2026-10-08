@@ -161,6 +161,10 @@ public partial class MainWindow : Window
 
     // Loading
     private CancellationTokenSource? _loadCts;
+    // 直近のアーカイブ読み込み。キャンセル後もTaskが終わるまではアーカイブを開いたままなので、
+    // 移動・削除・名前変更の前にこれの完了を待ってファイルのロックが外れたことを保証する。
+    private Task? _archiveLoadTask;
+    private CancellationTokenSource? _archiveLoadCts;
     private bool _loadingConfig;
 
     [DllImport("shell32.dll")]
@@ -420,6 +424,7 @@ public partial class MainWindow : Window
     private void SwitchMode(string mode)
     {
         ClearStatusBar();
+        LoadCancelledPanel.Visibility = Visibility.Collapsed;
         _mode = mode;
         BtnBrowse.IsChecked = mode == "browse";
         BtnExtract.IsChecked = mode == "extract";
@@ -1676,7 +1681,25 @@ public partial class MainWindow : Window
 
     /// <summary>右クリックメニューを開くたびに、選択数とコピー済みタグの有無からコピー/貼り付け項目の有効状態を決める。</summary>
     private void TagFileListContextMenu_Opened(object sender, RoutedEventArgs e)
-        => UpdateTagClipboardMenuItems(MenuCopyTagFileTags, MenuPasteTagFileTags, TagFileListPanel.SelectedItems.Count, TagDomain.Image);
+    {
+        UpdateTagClipboardMenuItems(MenuCopyTagFileTags, MenuPasteTagFileTags, TagFileListPanel.SelectedItems.Count, TagDomain.Image);
+        MenuOpenTagFileInExplorer.IsEnabled = TagFileListPanel.SelectedItems.Count == 1;
+        MenuOpenTagFileWithDefault.IsEnabled = TagFileListPanel.SelectedItems.Count == 1;
+    }
+
+    /// <summary>右クリックメニューから、1件だけ選択しているファイルを既定のプログラムで開く。</summary>
+    private void BtnOpenTagFileWithDefault_Click(object sender, RoutedEventArgs e)
+    {
+        if (TagFileListPanel.SelectedItems.Count != 1) return;
+        OpenWithDefaultProgram(((TagFileListItem)TagFileListPanel.SelectedItems[0]!).Path);
+    }
+
+    /// <summary>右クリックメニューから、1件だけ選択しているファイルをエクスプローラーで選択状態にして開く。</summary>
+    private void BtnOpenTagFileInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (TagFileListPanel.SelectedItems.Count != 1) return;
+        OpenFileLocationInExplorer(((TagFileListItem)TagFileListPanel.SelectedItems[0]!).Path);
+    }
 
     /// <summary>右クリックメニューから、1件だけ選択しているファイルのタグを控える。</summary>
     private void BtnCopyTagFileTags_Click(object sender, RoutedEventArgs e)
@@ -2129,7 +2152,23 @@ public partial class MainWindow : Window
     }
 
     private void TagVideoFileListContextMenu_Opened(object sender, RoutedEventArgs e)
-        => UpdateTagClipboardMenuItems(MenuCopyTagVideoFileTags, MenuPasteTagVideoFileTags, TagVideoFileListPanel.SelectedItems.Count, TagDomain.Video);
+    {
+        UpdateTagClipboardMenuItems(MenuCopyTagVideoFileTags, MenuPasteTagVideoFileTags, TagVideoFileListPanel.SelectedItems.Count, TagDomain.Video);
+        MenuOpenTagVideoFileInExplorer.IsEnabled = TagVideoFileListPanel.SelectedItems.Count == 1;
+        MenuOpenTagVideoFileWithDefault.IsEnabled = TagVideoFileListPanel.SelectedItems.Count == 1;
+    }
+
+    private void BtnOpenTagVideoFileWithDefault_Click(object sender, RoutedEventArgs e)
+    {
+        if (TagVideoFileListPanel.SelectedItems.Count != 1) return;
+        OpenWithDefaultProgram(((TagVideoFileListItem)TagVideoFileListPanel.SelectedItems[0]!).Path);
+    }
+
+    private void BtnOpenTagVideoFileInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (TagVideoFileListPanel.SelectedItems.Count != 1) return;
+        OpenFileLocationInExplorer(((TagVideoFileListItem)TagVideoFileListPanel.SelectedItems[0]!).Path);
+    }
 
     private void BtnCopyTagVideoFileTags_Click(object sender, RoutedEventArgs e)
     {
@@ -2380,7 +2419,7 @@ public partial class MainWindow : Window
     /// タグモード専用の削除。設定済みの削除フォルダへ移動する他モードとは異なり、
     /// ソースフォルダがドライブをまたいでも迷わないようWindowsのゴミ箱へ送る。
     /// </summary>
-    private void DeleteCurrentFileToRecycleBin()
+    private async void DeleteCurrentFileToRecycleBin()
     {
         if (_archivePath == null) return;
         var identity = GetCurrentFileIdentity();
@@ -2391,6 +2430,7 @@ public partial class MainWindow : Window
 
         try
         {
+            await ReleaseArchiveLoadAsync(); // 展開中のアーカイブを開いたままだと削除に失敗するため
             Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
                 Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
                 Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
@@ -2424,6 +2464,7 @@ public partial class MainWindow : Window
         if (_tagFileList.Count == 0)
         {
             _archivePath = null;
+            LoadCancelledPanel.Visibility = Visibility.Collapsed;
             _tagFileIndex = -1;
             ThumbnailGrid.Children.Clear();
             _cards.Clear();
@@ -2928,11 +2969,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>ファイル一覧で複数選択したファイルをまとめてゴミ箱へ移動する（タグ閲覧/タグ動画共通、モードで分岐）。</summary>
-    private void BulkDeleteTagFiles(List<string> paths)
+    private async void BulkDeleteTagFiles(List<string> paths)
     {
         if (paths.Count == 0) return;
         if (new Dialogs.ConfirmDialog($"選択した{paths.Count}件をゴミ箱へ移動しますか？") { Owner = this }.ShowDialog() != true)
             return;
+
+        // 展開中のアーカイブを開いたままだと削除に失敗するため
+        if (_mode != "tagvideo" && _archivePath != null && paths.Contains(_archivePath))
+            await ReleaseArchiveLoadAsync();
 
         var domain = CurrentTagDomain;
         var deletedPaths = new HashSet<string>();
@@ -2996,6 +3041,7 @@ public partial class MainWindow : Window
                 else
                 {
                     _archivePath = null;
+                    LoadCancelledPanel.Visibility = Visibility.Collapsed;
                     _tagFileIndex = -1;
                     ThumbnailGrid.Children.Clear();
                     _cards.Clear();
@@ -3185,6 +3231,7 @@ public partial class MainWindow : Window
             }
 
             if (_mode == "tagvideo") StopVideo(); // VLCがファイルを開いたままだと移動に失敗するため
+            else await ReleaseArchiveLoadAsync(); // 展開中のアーカイブを開いたままだと移動に失敗するため
 
             var msg = $"移動中: {Path.GetFileName(src)}...";
             await MoveFileWithProgress(src, dst, msg);
@@ -3208,7 +3255,7 @@ public partial class MainWindow : Window
     /// 現在開いているファイルの実ファイル名を変更する（タグ・作品名はそのまま引き継ぐ）。
     /// 拡張子は変更させない（種別判定を壊さないため、変更できるのは拡張子より前の部分のみ）。
     /// </summary>
-    private void RenameCurrentTagFile()
+    private async void RenameCurrentTagFile()
     {
         var oldPath = CurrentTagFilePath;
         if (oldPath == null) return;
@@ -3239,6 +3286,7 @@ public partial class MainWindow : Window
         try
         {
             if (_mode == "tagvideo") StopVideo(); // VLCがファイルを開いたままだと移動に失敗するため
+            else await ReleaseArchiveLoadAsync(); // 展開中のアーカイブを開いたままだと名前変更に失敗するため
             File.Move(oldPath, newPath);
         }
         catch (Exception ex)
@@ -3290,6 +3338,7 @@ public partial class MainWindow : Window
     private void CloseArchiveForRating()
     {
         _archivePath = null;
+        LoadCancelledPanel.Visibility = Visibility.Collapsed;
         _imageNames.Clear();
         _thumbData = null;
         _thumbnails = null;
@@ -4492,6 +4541,25 @@ public partial class MainWindow : Window
     {
         var path = CurrentTagFilePath;
         if (path == null) return;
+        OpenFileLocationInExplorer(path);
+    }
+
+    /// <summary>指定ファイルを、Windowsでその拡張子に関連付けられた既定のプログラムで開く。</summary>
+    private void OpenWithDefaultProgram(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"既定のプログラムで開けませんでした: {ex.Message}");
+        }
+    }
+
+    /// <summary>指定ファイルをエクスプローラーで選択状態にして開く。</summary>
+    private void OpenFileLocationInExplorer(string path)
+    {
         try
         {
             Process.Start("explorer.exe", $"/select,\"{path}\"");
@@ -4576,12 +4644,18 @@ public partial class MainWindow : Window
         _loadCts = new CancellationTokenSource();
         var ct = _loadCts.Token;
 
+        _archiveLoadCts = _loadCts;
+
         _archivePath = path;
         _selectStart = null;
         _selectEnd = null;
         _selectionConfirmed = false;
 
         EmptyMessage.Visibility = Visibility.Collapsed;
+        LoadCancelledPanel.Visibility = Visibility.Collapsed;
+        LoadProgress.Value = 0;
+        ProgressText.Text = "読み込み中...";
+        BtnCancelLoad.Visibility = _mode == "tag" ? Visibility.Visible : Visibility.Collapsed;
         ProgressOverlay.Visibility = Visibility.Visible;
         if (!keepViewer) CloseViewer();
         ThumbnailGrid.Children.Clear();
@@ -4591,29 +4665,54 @@ public partial class MainWindow : Window
         BuildFolderArchives();
         UpdateNavigation();
 
+        // タグモードでは展開完了を待たずに左ペイン（作品名・タグ・移動）を新しいファイルに切り替え、
+        // 展開中やキャンセル後でもこのファイルに対してタグ付け・移動ができるようにする
+        if (_mode == "tag")
+        {
+            RebuildSidebar();
+            RefreshCurrentTagFileListDisplay();
+        }
+
         SetStatus($"読み込み中: {Path.GetFileName(path)}");
 
         try
         {
-            await Task.Run(() =>
+            var loadTask = Task.Run(() =>
             {
                 // Step 1: Read all raw image data from archive sequentially (thread-safe)
-                using var archive = ArchiveFactory.Open(path);
-                var names = archive.GetImageNames();
-                if (ct.IsCancellationRequested) return;
-
-                Dispatcher.Invoke(() =>
+                // 読み終えたらすぐ閉じる（サムネイル生成中もファイルをロックし続けないように）
+                List<string> names;
+                var rawImages = Array.Empty<byte[]?>();
+                using (var archive = ArchiveFactory.Open(path))
                 {
-                    _imageNames = names;
-                    LoadProgress.Maximum = names.Count;
-                });
-
-                var rawImages = new byte[]?[names.Count];
-                for (int i = 0; i < names.Count; i++)
-                {
+                    names = archive.GetImageNames();
                     if (ct.IsCancellationRequested) return;
-                    try { rawImages[i] = archive.ReadEntry(names[i]); }
-                    catch { rawImages[i] = null; }
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (ct.IsCancellationRequested) return;
+                        _imageNames = names;
+                        LoadProgress.Maximum = names.Count;
+                    });
+
+                    rawImages = new byte[]?[names.Count];
+                    for (int i = 0; i < names.Count; i++)
+                    {
+                        if (ct.IsCancellationRequested) return;
+                        try { rawImages[i] = archive.ReadEntry(names[i], ct); }
+                        catch { rawImages[i] = null; }
+
+                        var done = i + 1;
+                        if (done % 5 == 0 || done == names.Count)
+                        {
+                            Dispatcher.BeginInvoke(() =>
+                            {
+                                if (ct.IsCancellationRequested) return;
+                                LoadProgress.Value = done;
+                                ProgressText.Text = $"展開中... {done}/{names.Count}";
+                            });
+                        }
+                    }
                 }
 
                 // Step 2: Generate thumbnails in parallel (no archive access needed)
@@ -4637,8 +4736,9 @@ public partial class MainWindow : Window
                     {
                         Dispatcher.BeginInvoke(() =>
                         {
+                            if (ct.IsCancellationRequested) return;
                             LoadProgress.Value = c;
-                            ProgressText.Text = $"読み込み中... {c}/{names.Count}";
+                            ProgressText.Text = $"サムネイル生成中... {c}/{names.Count}";
                         });
                     }
                 });
@@ -4647,6 +4747,8 @@ public partial class MainWindow : Window
 
                 Dispatcher.Invoke(() =>
                 {
+                    // ここに来るまでの間にキャンセルボタンが押されていたら、キャンセル後の表示を上書きしない
+                    if (ct.IsCancellationRequested) return;
                     _thumbData = data;
                     BuildThumbnails();
                     RebuildGrid();
@@ -4669,13 +4771,73 @@ public partial class MainWindow : Window
                     }
                 });
             }, ct);
+            _archiveLoadTask = loadTask;
+            await loadTask;
         }
         catch (OperationCanceledException) { }
+        catch (Exception) when (ct.IsCancellationRequested) { } // キャンセル済み（別ファイルへの切替含む）の読み込みのエラーは無視
         catch (Exception ex)
         {
             ProgressOverlay.Visibility = Visibility.Collapsed;
             SetStatus($"エラー: {ex.Message}");
             ShowError($"アーカイブの読み込みに失敗しました:\n{ex.Message}");
+        }
+    }
+
+    /// <summary>展開中（キャンセル要求前）のアーカイブ読み込みがあるか。</summary>
+    private bool IsArchiveLoading =>
+        _archiveLoadTask is { IsCompleted: false } && _archiveLoadCts is { IsCancellationRequested: false };
+
+    private void BtnCancelLoad_Click(object sender, RoutedEventArgs e) => CancelArchiveLoad();
+
+    /// <summary>キャンセル後の「再展開」ボタン。開いたままのファイルを最初から読み込み直す。</summary>
+    private void BtnReloadArchive_Click(object sender, RoutedEventArgs e)
+    {
+        if (_archivePath != null) LoadArchive(_archivePath);
+    }
+
+    /// <summary>
+    /// 展開を中止する。ファイルは「開いている」状態のまま残す（_archivePathは維持）ので、
+    /// 左ペインからのタグ付け・作品名入力・移動や、再展開がそのまま行える。
+    /// 途中まで読んだ画像は破棄し、前のファイルのサムネイル等が残らないようにする。
+    /// </summary>
+    private void CancelArchiveLoad()
+    {
+        if (!IsArchiveLoading) return;
+        _archiveLoadCts!.Cancel();
+
+        ProgressOverlay.Visibility = Visibility.Collapsed;
+        CloseViewer();
+        ThumbnailGrid.Children.Clear();
+        _cards.Clear();
+        // バックグラウンド側が参照中の可能性があるのでClear()せず差し替える
+        _imageNames = [];
+        _thumbData = null;
+        _thumbnails = null;
+        _thumbSrcSizes = null;
+        _selectStart = null;
+        _selectEnd = null;
+
+        LoadCancelledPanel.Visibility = Visibility.Visible;
+        if (_archivePath != null)
+        {
+            SetStatus($"展開をキャンセルしました: {Path.GetFileName(_archivePath)}");
+            UpdateFileSize(_archivePath);
+        }
+        UpdateNavigation();
+    }
+
+    /// <summary>
+    /// 現在のアーカイブを移動・削除・名前変更する直前に呼ぶ。展開中なら中止し、
+    /// バックグラウンドの読み込みがアーカイブを閉じ終えるまで待つ（開いたままだとファイル操作が失敗するため）。
+    /// </summary>
+    private async Task ReleaseArchiveLoadAsync()
+    {
+        CancelArchiveLoad();
+        var task = _archiveLoadTask;
+        if (task is { IsCompleted: false })
+        {
+            try { await task; } catch { }
         }
     }
 
@@ -4689,11 +4851,13 @@ public partial class MainWindow : Window
 
         _imageFolderPath = folderPath;
         _archivePath = null;
+        LoadCancelledPanel.Visibility = Visibility.Collapsed;
         _selectStart = null;
         _selectEnd = null;
         _selectionConfirmed = false;
 
         EmptyMessage.Visibility = Visibility.Collapsed;
+        BtnCancelLoad.Visibility = Visibility.Collapsed;
         ProgressOverlay.Visibility = Visibility.Visible;
         ViewerOverlay.Visibility = Visibility.Collapsed;
         _viewerOpen = false;
@@ -5994,6 +6158,8 @@ public partial class MainWindow : Window
                 if (resolution == "rename") dst = MakeUniquePath(dst);
             }
 
+            if (!action.Copy) await ReleaseArchiveLoadAsync(); // 展開中のアーカイブを開いたままだと移動に失敗するため
+
             var verb = action.Copy ? "コピー" : "移動";
             var msg = $"{verb}中: {Path.GetFileName(src)}...";
             if (action.Copy)
@@ -6167,6 +6333,7 @@ public partial class MainWindow : Window
         if (_folderArchives.Count == 0)
         {
             _archivePath = null;
+            LoadCancelledPanel.Visibility = Visibility.Collapsed;
             ThumbnailGrid.Children.Clear();
             _cards.Clear();
             EmptyMessage.Visibility = Visibility.Visible;
@@ -6525,6 +6692,7 @@ public partial class MainWindow : Window
         RefreshCurrentTagFileListDisplay(); // ファイル一覧の「今再生中」マークを更新（_tagVideoFileListの並び順自体は変えない）
 
         // Show loading overlay
+        BtnCancelLoad.Visibility = Visibility.Collapsed;
         ProgressOverlay.Visibility = Visibility.Visible;
         ProgressText.Text = "動画を開いています...";
         LoadProgress.IsIndeterminate = true;
