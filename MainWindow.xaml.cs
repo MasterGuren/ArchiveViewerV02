@@ -101,6 +101,9 @@ public partial class MainWindow : Window
     // Extract
     private List<ExtractEntry> _extractEntries = [];
     private string _extractOutputFolder = "";
+    // ファイル検索の結果。今開いているファイルが含まれている間（_extractFileIndex >= 0）は前後移動もこの順で行う
+    private List<string> _extractFileList = [];
+    private int _extractFileIndex = -1;
 
     // Video
     private string? _videoPath;
@@ -205,6 +208,7 @@ public partial class MainWindow : Window
         _extractPresets = _config.ExtractPresets;
         _extractCurrentPreset = _config.State.ExtractCurrentPreset;
         _extractOutputFolder = _config.State.ExtractOutputFolder;
+        TxtExtractSearchText.Text = _config.State.ExtractSearchText ?? "";
         _folderSort = _config.State.FolderSort;
         _folderSortDir = string.IsNullOrEmpty(_config.State.FolderSortDir) ? "asc" : _config.State.FolderSortDir;
         _cardOrient = _config.State.CardOrient;
@@ -297,6 +301,7 @@ public partial class MainWindow : Window
     {
         _config.State.ExtractCurrentPreset = _extractCurrentPreset;
         _config.State.ExtractOutputFolder = _extractOutputFolder;
+        _config.State.ExtractSearchText = TxtExtractSearchText.Text;
         _config.State.FolderSort = _folderSort;
         _config.State.FolderSortDir = _folderSortDir;
         _config.State.CardOrient = _cardOrient;
@@ -477,6 +482,7 @@ public partial class MainWindow : Window
             _selectEnd = null;
             _folderArchives.Clear();
             _currentArchiveIndex = -1;
+            _extractFileIndex = -1;
         }
         if (_imageFolderPath != null)
         {
@@ -767,6 +773,8 @@ public partial class MainWindow : Window
 
         AddSidebarSeparator();
         BuildTrashDisplay(_extractTrashFolder);
+
+        RebuildExtractFileListPanel();
     }
 
     private void BuildVideoSidebar()
@@ -1720,10 +1728,13 @@ public partial class MainWindow : Window
     /// 同じフォルダを2つ登録した場合や、親フォルダとそのサブフォルダを両方チェックした場合に
     /// 同じファイルを何度もスキャンしてしまう（重い・遅い）のを防ぐ。
     /// </summary>
-    private List<string> GetActiveTagFolders()
+    private List<string> GetActiveTagFolders() =>
+        DedupeNestedFolders(_tagSourceFolders.Where(f => !_tagDisabledFolders.Contains(f)));
+
+    /// <summary>フォルダ一覧から重複と、他のフォルダのサブフォルダになっているものを除く（同じファイルを何度も走査しないように）。</summary>
+    private static List<string> DedupeNestedFolders(IEnumerable<string> folders)
     {
-        var normalized = _tagSourceFolders
-            .Where(f => !_tagDisabledFolders.Contains(f))
+        var normalized = folders
             .Select(f => { try { return Path.GetFullPath(f).TrimEnd('\\', '/'); } catch { return null; } })
             .Where(f => f != null)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -2211,25 +2222,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>チェックが入っている（無効リストに無い）動画タグモードのソースフォルダを重複・親子関係を除去した上で返す。</summary>
-    private List<string> GetActiveTagVideoFolders()
-    {
-        var normalized = _tagVideoSourceFolders
-            .Where(f => !_tagVideoDisabledFolders.Contains(f))
-            .Select(f => { try { return Path.GetFullPath(f).TrimEnd('\\', '/'); } catch { return null; } })
-            .Where(f => f != null)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var result = new List<string>();
-        foreach (var folder in normalized)
-        {
-            bool coveredByAnother = normalized.Any(other =>
-                !string.Equals(other, folder, StringComparison.OrdinalIgnoreCase) &&
-                folder!.StartsWith(other + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
-            if (!coveredByAnother) result.Add(folder!);
-        }
-        return result;
-    }
+    private List<string> GetActiveTagVideoFolders() =>
+        DedupeNestedFolders(_tagVideoSourceFolders.Where(f => !_tagVideoDisabledFolders.Contains(f)));
 
     private async Task<List<TagFileEntry>> BuildTagVideoFileEntriesAsync(CancellationToken ct)
     {
@@ -4663,6 +4657,8 @@ public partial class MainWindow : Window
 
         // Build folder file list
         BuildFolderArchives();
+        // 検索結果に含まれるファイルを開いた場合は、前後移動を検索結果の並びで行う
+        if (_mode == "extract") _extractFileIndex = IndexOfExtractFile(path);
         UpdateNavigation();
 
         // タグモードでは展開完了を待たずに左ペイン（作品名・タグ・移動）を新しいファイルに切り替え、
@@ -4671,6 +4667,10 @@ public partial class MainWindow : Window
         {
             RebuildSidebar();
             RefreshCurrentTagFileListDisplay();
+        }
+        else if (_mode == "extract")
+        {
+            RebuildExtractFileListPanel(forceRefreshContent: true);
         }
 
         SetStatus($"読み込み中: {Path.GetFileName(path)}");
@@ -5624,6 +5624,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_mode == "extract" && _extractFileIndex >= 0)
+        {
+            TxtCurrentFile.Text = Path.GetFileName(_archivePath) ?? "";
+            TxtFilePosition.Text = $"({_extractFileIndex + 1}/{_extractFileList.Count})";
+            TxtPrevFile.Text = _extractFileIndex > 0 ? Path.GetFileName(_extractFileList[_extractFileIndex - 1]) : "";
+            TxtNextFile.Text = _extractFileIndex < _extractFileList.Count - 1
+                ? Path.GetFileName(_extractFileList[_extractFileIndex + 1]) : "";
+            return;
+        }
+
         if (_folderArchives.Count == 0 || _currentArchiveIndex < 0)
         {
             TxtPrevFile.Text = "";
@@ -5677,6 +5687,14 @@ public partial class MainWindow : Window
                 _tagVideoFileIndex = newTagVideoIdx;
                 PlayVideo(_tagVideoFileList[newTagVideoIdx], trackSiblings: false);
             }
+            return;
+        }
+
+        if (_mode == "extract" && _extractFileIndex >= 0)
+        {
+            int newExtractIdx = _extractFileIndex + delta;
+            if (newExtractIdx >= 0 && newExtractIdx < _extractFileList.Count)
+                LoadArchive(_extractFileList[newExtractIdx], keepViewer: _viewerOpen);
             return;
         }
 
@@ -5762,6 +5780,14 @@ public partial class MainWindow : Window
                 _tagVideoFileIndex = tagVideoIdx;
                 PlayVideo(_tagVideoFileList[tagVideoIdx], trackSiblings: false);
             }
+            return;
+        }
+
+        if (_mode == "extract" && _extractFileIndex >= 0)
+        {
+            int extractIdx = last ? _extractFileList.Count - 1 : 0;
+            if (extractIdx != _extractFileIndex)
+                LoadArchive(_extractFileList[extractIdx], keepViewer: _viewerOpen);
             return;
         }
 
@@ -5894,8 +5920,15 @@ public partial class MainWindow : Window
             if (_tagVideoFileList.Count > 0)
                 RebuildTagVideoFileListForSort();
         }
+        else if (_mode == "extract" && _extractFileIndex >= 0)
+        {
+            // 検索結果の並びで移動している間は、タグ閲覧と同じく並べ替えるだけで何も開き直さない
+            RebuildExtractFileListForSort();
+        }
         else
         {
+            if (_mode == "extract" && _extractFileList.Count > 0)
+                RebuildExtractFileListForSort();
             if (_archivePath != null)
             {
                 BuildFolderArchives(forceReshuffle);
@@ -6324,6 +6357,12 @@ public partial class MainWindow : Window
 
     private void AfterFileAction()
     {
+        if (_mode == "extract" && _extractFileIndex >= 0)
+        {
+            AfterExtractFileRemovedFromList();
+            return;
+        }
+
         int oldIdx = _currentArchiveIndex;
 
         // Remove the moved file from the cached list
@@ -6518,6 +6557,8 @@ public partial class MainWindow : Window
     {
         ExtractListPanel.Children.Clear();
         BtnClearExtractList.IsEnabled = _extractEntries.Count > 0;
+        // 検索タブを見ている間もリストに中身があることが分かるよう、タブに件数を出す
+        BtnExtractTabList.Content = _extractEntries.Count > 0 ? $"抽出リスト（{_extractEntries.Count}）" : "抽出リスト";
         for (int i = 0; i < _extractEntries.Count; i++)
         {
             var entry = _extractEntries[i];
@@ -6598,6 +6639,268 @@ public partial class MainWindow : Window
         tb.TextChanged += (_, _) => onChange(tb.Text);
         row.Children.Add(tb);
         panel.Children.Add(row);
+    }
+
+    // ======== EXTRACT FILE SEARCH ========
+    // タグ閲覧の検索と同じ動き（検索は一覧を作るだけ・ダブルクリックで開く・並べ替え追従）。タグ・作品名は扱わずファイル名だけで絞り込む。
+
+    private CancellationTokenSource? _extractListCts;
+    // _extractFileList の参照が変わっていなければ、パネルは既にそのリストの内容を反映している
+    private List<string>? _extractFileListPanelBuiltFor;
+
+    private sealed record ExtractFileListItem(string Path, Func<string?> GetCurrentPath)
+    {
+        public string FileName => System.IO.Path.GetFileName(Path);
+
+        public Visibility IsCurrentlyOpenVisibility =>
+            string.Equals(Path, GetCurrentPath(), StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+
+        public string FileSizeText
+        {
+            get
+            {
+                var identity = GetFileIdentity(Path);
+                return identity == null ? "" : FormatSize(identity.Value.Size);
+            }
+        }
+    }
+
+    private void BtnExtractTab_Click(object sender, RoutedEventArgs e)
+    {
+        bool search = sender == BtnExtractTabSearch;
+        BtnExtractTabList.IsChecked = !search;
+        BtnExtractTabSearch.IsChecked = search;
+        ExtractListTabContent.Visibility = search ? Visibility.Collapsed : Visibility.Visible;
+        ExtractSearchTabContent.Visibility = search ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void TxtExtractSearchText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) ExecuteExtractSearch();
+    }
+
+    private void BtnExecuteExtractSearch_Click(object sender, RoutedEventArgs e) => ExecuteExtractSearch();
+
+    private void TxtExtractSearchText_LostFocus(object sender, RoutedEventArgs e) => SaveStateOnly();
+
+    private void BtnClearExtractSearchText_Click(object sender, RoutedEventArgs e)
+    {
+        TxtExtractSearchText.Clear();
+        SaveStateOnly();
+    }
+
+    /// <summary>検索実行は一覧を更新するだけで、開いているファイルは閉じない・新たに何かを開くこともしない。</summary>
+    private async void ExecuteExtractSearch()
+    {
+        if (_extractSourceFolders.Count == 0)
+        {
+            SetStatus("ソースフォルダが設定されていません（⚙ プリセット設定で追加してください）");
+            return;
+        }
+
+        SetStatus("検索しています...");
+        var results = await RebuildExtractFileListAsync("検索中...");
+        if (results == null) return;
+        SetStatus(results.Count > 0 ? $"検索結果: {results.Count:N0}件" : "検索結果が見つかりません");
+    }
+
+    /// <summary>ソート条件変更（ランダム含む）時、検索条件を保ったまま並べ直す。開いているファイルは閉じない・新たに開かない。</summary>
+    private async void RebuildExtractFileListForSort() => await RebuildExtractFileListAsync("並べ替え中...");
+
+    /// <summary>検索を実行して_extractFileListを差し替える。キャンセル・失敗時はnullを返し、一覧はそのまま残す。</summary>
+    private async Task<List<string>?> RebuildExtractFileListAsync(string progressText)
+    {
+        _extractListCts?.Cancel();
+        _extractListCts = new CancellationTokenSource();
+        var ct = _extractListCts.Token;
+
+        TxtExtractFileListHeader.Text = progressText;
+
+        List<string> results;
+        try
+        {
+            results = await ComputeExtractSearchResultsAsync(ct);
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex)
+        {
+            SetStatus($"エラー: {ex.Message}");
+            UpdateExtractFileListHeaderText();
+            return null;
+        }
+        if (ct.IsCancellationRequested) return null;
+
+        _extractFileList = results;
+        _extractFileIndex = _mode == "extract" && _archivePath != null ? IndexOfExtractFile(_archivePath) : -1;
+        UpdateNavigation();
+        RebuildExtractFileListPanel();
+        return results;
+    }
+
+    /// <summary>
+    /// プリセットのソースフォルダ（サブフォルダ含む）から、ファイル名（拡張子除く）に検索文字列を含むアーカイブを集めて並べ替える。
+    /// 検索文字列が空なら全件。走査はバックグラウンドで行い、UIをブロックしない。
+    /// </summary>
+    private async Task<List<string>> ComputeExtractSearchResultsAsync(CancellationToken ct)
+    {
+        var folders = DedupeNestedFolders(_extractSourceFolders);
+        var text = TxtExtractSearchText.Text.Trim();
+        var sort = _folderSort;
+        var sortDir = _folderSortDir;
+
+        return await Task.Run(() =>
+        {
+            var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+            var list = new List<TagFileEntry>();
+            int scanned = 0;
+
+            foreach (var folder in folders)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!Directory.Exists(folder)) continue;
+
+                foreach (var file in new DirectoryInfo(folder).EnumerateFiles("*", options))
+                {
+                    if (++scanned % 1000 == 0)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var s = scanned; var m = list.Count;
+                        Dispatcher.BeginInvoke(() => TxtExtractFileListHeader.Text = $"走査中... {s:N0}件 / {m:N0}件該当");
+                    }
+
+                    if (!Theme.ArchiveExtensions.Contains(file.Extension.ToLowerInvariant())) continue;
+                    if (text.Length > 0 &&
+                        !Path.GetFileNameWithoutExtension(file.Name).Contains(text, StringComparison.OrdinalIgnoreCase)) continue;
+                    list.Add(new TagFileEntry(file.FullName, file.Length, file.LastWriteTimeUtc.Ticks, file.CreationTime));
+                }
+            }
+
+            ct.ThrowIfCancellationRequested();
+            return SortFileEntries(list, sort, sortDir).Select(e => e.Path).ToList();
+        }, ct);
+    }
+
+    private static List<TagFileEntry> SortFileEntries(List<TagFileEntry> list, string sort, string sortDir)
+    {
+        switch (sort)
+        {
+            case "name":
+                list = [.. list.OrderBy(e => Path.GetFileName(e.Path), NaturalStringComparer.Instance)];
+                if (sortDir == "desc") list.Reverse();
+                return list;
+            case "date":
+                return sortDir == "asc" ? [.. list.OrderBy(e => e.Ticks)] : [.. list.OrderByDescending(e => e.Ticks)];
+            case "created":
+                return sortDir == "asc" ? [.. list.OrderBy(e => e.Created)] : [.. list.OrderByDescending(e => e.Created)];
+            case "size":
+                return sortDir == "asc" ? [.. list.OrderBy(e => e.Size)] : [.. list.OrderByDescending(e => e.Size)];
+            case "random":
+                var rnd = new Random();
+                return [.. list.OrderBy(_ => rnd.Next())];
+            default:
+                return list;
+        }
+    }
+
+    private int IndexOfExtractFile(string path) =>
+        _extractFileList.FindIndex(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// 右サイドバーに_extractFileListを表示する。ListBoxのUI仮想化に任せるので数万件でも全件そのまま渡せる。
+    /// forceRefreshContent: 並び順は変わらないが「今開いているファイル」の印だけ更新したい場合にtrueを指定する。
+    /// </summary>
+    private void RebuildExtractFileListPanel(bool forceRefreshContent = false)
+    {
+        if (forceRefreshContent || !ReferenceEquals(_extractFileListPanelBuiltFor, _extractFileList))
+        {
+            // 印の更新だけなら選択行をそのまま残す
+            var selectedPath = forceRefreshContent ? (ExtractFileListPanel.SelectedItem as ExtractFileListItem)?.Path : null;
+            var items = _extractFileList.Select(p => new ExtractFileListItem(p, () => _archivePath)).ToList();
+            ExtractFileListPanel.ItemsSource = items;
+            if (selectedPath != null)
+                ExtractFileListPanel.SelectedItem = items.FirstOrDefault(i => string.Equals(i.Path, selectedPath, StringComparison.OrdinalIgnoreCase));
+            _extractFileListPanelBuiltFor = _extractFileList;
+        }
+
+        UpdateExtractFileListHeaderText();
+    }
+
+    private void UpdateExtractFileListHeaderText()
+    {
+        TxtExtractFileListHeader.Text = _extractFileList.Count == 0 ? "ファイル一覧" : $"ファイル一覧（{_extractFileList.Count:N0}件）";
+    }
+
+    /// <summary>ダブルクリックしたファイルを開く。以降の前後移動は検索結果の並びになる。</summary>
+    private void ExtractFileListPanel_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var idx = ExtractFileListPanel.SelectedIndex;
+        if (idx < 0 || idx >= _extractFileList.Count) return;
+        _folderRoot = null;
+        LoadArchive(_extractFileList[idx]);
+    }
+
+    private void BtnOpenTopExtractFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_extractFileList.Count == 0) return;
+        _folderRoot = null;
+        LoadArchive(_extractFileList[0]);
+        ExtractFileListPanel.SelectedIndex = 0;
+        ExtractFileListPanel.ScrollIntoView(ExtractFileListPanel.Items[0]);
+    }
+
+    private void BtnSelectCurrentExtractFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_extractFileIndex < 0 || _extractFileIndex >= ExtractFileListPanel.Items.Count) return;
+        ExtractFileListPanel.SelectedIndex = _extractFileIndex;
+        ExtractFileListPanel.ScrollIntoView(ExtractFileListPanel.Items[_extractFileIndex]);
+    }
+
+    private void ExtractFileListContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        bool hasSelection = ExtractFileListPanel.SelectedItem != null;
+        MenuOpenExtractFileInExplorer.IsEnabled = hasSelection;
+        MenuOpenExtractFileWithDefault.IsEnabled = hasSelection;
+    }
+
+    private void BtnOpenExtractFileInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        if (ExtractFileListPanel.SelectedItem is ExtractFileListItem item) OpenFileLocationInExplorer(item.Path);
+    }
+
+    private void BtnOpenExtractFileWithDefault_Click(object sender, RoutedEventArgs e)
+    {
+        if (ExtractFileListPanel.SelectedItem is ExtractFileListItem item) OpenWithDefaultProgram(item.Path);
+    }
+
+    /// <summary>
+    /// 検索結果の並びで開いていたファイルをアクションで移動した後、一覧から除いて同じ位置の次のファイルを開く。
+    /// AfterTagFileRemovedFromList()の抽出モード版。
+    /// </summary>
+    private void AfterExtractFileRemovedFromList()
+    {
+        int oldIdx = _extractFileIndex;
+        // フォルダ単位の一覧にも移動前のパスを残さない（後でフォルダから開き直したときに古いパスを辿らないように）
+        if (_currentArchiveIndex >= 0 && _currentArchiveIndex < _folderArchives.Count)
+            _folderArchives.RemoveAt(_currentArchiveIndex);
+        // 参照を変えずに書き換えると、右サイドバーの再描画判定（参照比較）に引っかからず表示が更新されない
+        _extractFileList = [.. _extractFileList.Where((_, i) => i != oldIdx)];
+
+        if (_extractFileList.Count == 0)
+        {
+            _archivePath = null;
+            LoadCancelledPanel.Visibility = Visibility.Collapsed;
+            _extractFileIndex = -1;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            EmptyMessage.Visibility = Visibility.Visible;
+            UpdateNavigation();
+            ClearStatusBar();
+            RebuildSidebar();
+            return;
+        }
+
+        CloseViewer();
+        LoadArchive(_extractFileList[Math.Clamp(oldIdx, 0, _extractFileList.Count - 1)], keepViewer: false);
     }
 
     // ======== VIDEO ========
@@ -7365,7 +7668,8 @@ public partial class MainWindow : Window
 
         if (_mode == "video" || _mode == "tagvideo") return;
 
-        if (_mode == "tag" && RightSidebar.IsVisible && TagFileListPanel.IsMouseOver)
+        if ((_mode == "tag" && RightSidebar.IsVisible && TagFileListPanel.IsMouseOver) ||
+            (_mode == "extract" && RightSidebar.IsVisible && ExtractFileListPanel.IsMouseOver))
         {
             // ファイル一覧上ではリスト自身のスクロールに任せる（ビューアーのナビゲーション等に奪われないように）
         }

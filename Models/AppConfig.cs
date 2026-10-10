@@ -39,6 +39,9 @@ public class AppState
     [JsonPropertyName("extract_output_folder")]
     public string ExtractOutputFolder { get; set; } = "";
 
+    [JsonPropertyName("extract_search_text")]
+    public string ExtractSearchText { get; set; } = "";
+
     [JsonPropertyName("folder_sort")]
     public string FolderSort { get; set; } = "name";
 
