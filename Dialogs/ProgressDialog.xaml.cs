@@ -10,6 +10,8 @@ public partial class ProgressDialog : Window
         MessageText.Text = message;
     }
 
+    public void SetMessage(string message) => MessageText.Text = message;
+
     public void UpdateProgress(double percent, string text)
     {
         Progress.IsIndeterminate = false;

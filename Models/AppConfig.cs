@@ -173,6 +173,10 @@ public class AppState
     [JsonPropertyName("tag_video_move_target_folder")]
     public string? TagVideoMoveTargetFolder { get; set; }
 
+    // 移動・削除で開いていたファイルが無くなった後、一覧の次のファイルを自動で開くか（falseなら閉じたままにする）
+    [JsonPropertyName("open_next_after_remove")]
+    public bool OpenNextAfterRemove { get; set; } = true;
+
     [JsonPropertyName("tag_file_list_wrap_tags")]
     public bool TagFileListWrapTags { get; set; } = true;
 

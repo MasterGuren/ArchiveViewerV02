@@ -597,12 +597,15 @@
                                          ItemTemplate="{StaticResource ExtractListItemTemplate}"
                                          ItemContainerStyle="{StaticResource TagListItemContainerStyle}"
                                          AlternationCount="2"
-                                         SelectionMode="Single"
+                                         SelectionMode="Extended"
+                                         SelectionChanged="ExtractFileListPanel_SelectionChanged"
                                          MouseDoubleClick="ExtractFileListPanel_MouseDoubleClick">
                                     <ListBox.ContextMenu>
                                         <ContextMenu Opened="ExtractFileListContextMenu_Opened">
                                             <MenuItem x:Name="MenuOpenExtractFileInExplorer" Header="エクスプローラーで開く" Click="BtnOpenExtractFileInExplorer_Click"/>
                                             <MenuItem x:Name="MenuOpenExtractFileWithDefault" Header="既定のプログラムで開く" Click="BtnOpenExtractFileWithDefault_Click"/>
+                                            <Separator/>
+                                            <MenuItem x:Name="MenuMoveExtractFiles" Header="選択したファイルを移動"/>
                                         </ContextMenu>
                                     </ListBox.ContextMenu>
                                 </ListBox>
@@ -694,6 +697,7 @@
                                     <MenuItem x:Name="MenuOpenTagFileWithDefault" Header="既定のプログラムで開く" Click="BtnOpenTagFileWithDefault_Click"/>
                                     <Separator/>
                                     <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagFiles_Click"/>
+                                    <MenuItem x:Name="MenuMoveTagFiles" Header="選択したファイルを移動"/>
                                     <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagFiles_Click"/>
                                 </ContextMenu>
                             </ListBox.ContextMenu>
@@ -784,6 +788,7 @@
                                     <MenuItem x:Name="MenuOpenTagVideoFileWithDefault" Header="既定のプログラムで開く" Click="BtnOpenTagVideoFileWithDefault_Click"/>
                                     <Separator/>
                                     <MenuItem Header="選択したファイルにタグを追加/削除..." Click="BtnBulkEditTagVideoFiles_Click"/>
+                                    <MenuItem x:Name="MenuMoveTagVideoFiles" Header="選択したファイルを移動"/>
                                     <MenuItem Header="選択したファイルをゴミ箱へ移動" Click="BtnBulkDeleteTagVideoFiles_Click"/>
                                 </ContextMenu>
                             </ListBox.ContextMenu>

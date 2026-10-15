@@ -66,6 +66,9 @@ public partial class MainWindow : Window
     private List<string> _tagVideoMoveFolders = [];
     private string? _tagVideoMoveTargetFolder;
 
+    // 移動・削除で開いていたファイルが無くなった後、次のファイルを自動で開くか（falseなら閉じたままにする）
+    private bool _openNextAfterRemove = true;
+
     // Archive state
     private string? _archivePath;
     private List<string> _imageNames = [];
@@ -256,6 +259,7 @@ public partial class MainWindow : Window
         _tagMoveTargetFolder = _config.State.TagMoveTargetFolder;
         _tagVideoMoveFolders = _config.State.TagVideoMoveFolders ?? [];
         _tagVideoMoveTargetFolder = _config.State.TagVideoMoveTargetFolder;
+        _openNextAfterRemove = _config.State.OpenNextAfterRemove;
 
         LoadPreset(_extractCurrentPreset, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
         _imagePresets = _config.ImagePresets;
@@ -353,6 +357,7 @@ public partial class MainWindow : Window
         _config.State.TagMoveTargetFolder = _tagMoveTargetFolder;
         _config.State.TagVideoMoveFolders = _tagVideoMoveFolders;
         _config.State.TagVideoMoveTargetFolder = _tagVideoMoveTargetFolder;
+        _config.State.OpenNextAfterRemove = _openNextAfterRemove;
     }
 
     /// <summary>
@@ -761,6 +766,7 @@ public partial class MainWindow : Window
 
         // Actions (execute only)
         BuildActionButtons(_extractActions, (a) => ExecuteAction(a));
+        AddOpenNextAfterRemoveCheckBox(LeftSidebar, fontSize: 13);
 
         AddSidebarSeparator();
 
@@ -903,6 +909,7 @@ public partial class MainWindow : Window
         deleteBtn.FontSize = 11;
         fileButtonRow.Children.Add(deleteBtn);
         LeftSidebarPinned.Children.Add(fileButtonRow);
+        AddOpenNextAfterRemoveCheckBox(LeftSidebarPinned, fontSize: 12);
 
         AddSidebarSeparator(LeftSidebarPinned, margin: 5);
 
@@ -1693,6 +1700,10 @@ public partial class MainWindow : Window
         UpdateTagClipboardMenuItems(MenuCopyTagFileTags, MenuPasteTagFileTags, TagFileListPanel.SelectedItems.Count, TagDomain.Image);
         MenuOpenTagFileInExplorer.IsEnabled = TagFileListPanel.SelectedItems.Count == 1;
         MenuOpenTagFileWithDefault.IsEnabled = TagFileListPanel.SelectedItems.Count == 1;
+        var paths = TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToList();
+        BuildMoveFilesSubmenu(MenuMoveTagFiles, paths.Count,
+            _tagMoveFolders.Select(f => (f, f, false)),
+            (folder, _) => BulkMoveTagFiles(paths, folder));
     }
 
     /// <summary>右クリックメニューから、1件だけ選択しているファイルを既定のプログラムで開く。</summary>
@@ -2167,6 +2178,10 @@ public partial class MainWindow : Window
         UpdateTagClipboardMenuItems(MenuCopyTagVideoFileTags, MenuPasteTagVideoFileTags, TagVideoFileListPanel.SelectedItems.Count, TagDomain.Video);
         MenuOpenTagVideoFileInExplorer.IsEnabled = TagVideoFileListPanel.SelectedItems.Count == 1;
         MenuOpenTagVideoFileWithDefault.IsEnabled = TagVideoFileListPanel.SelectedItems.Count == 1;
+        var paths = TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToList();
+        BuildMoveFilesSubmenu(MenuMoveTagVideoFiles, paths.Count,
+            _tagVideoMoveFolders.Select(f => (f, f, false)),
+            (folder, _) => BulkMoveTagFiles(paths, folder));
     }
 
     private void BtnOpenTagVideoFileWithDefault_Click(object sender, RoutedEventArgs e)
@@ -2455,8 +2470,9 @@ public partial class MainWindow : Window
             _tagFileList = [.. _tagFileList.Where((_, i) => i != oldIdx)];
         }
 
-        if (_tagFileList.Count == 0)
+        if (_tagFileList.Count == 0 || !_openNextAfterRemove)
         {
+            if (_viewerOpen) CloseViewer();
             _archivePath = null;
             LoadCancelledPanel.Visibility = Visibility.Collapsed;
             _tagFileIndex = -1;
@@ -2513,7 +2529,7 @@ public partial class MainWindow : Window
             _tagVideoFileList = [.. _tagVideoFileList.Where((_, i) => i != oldIdx)];
         }
 
-        if (_tagVideoFileList.Count == 0)
+        if (_tagVideoFileList.Count == 0 || !_openNextAfterRemove)
         {
             _videoPath = null;
             _tagVideoFileIndex = -1;
@@ -2992,13 +3008,21 @@ public partial class MainWindow : Window
         if (deletedPaths.Count == 0) return;
 
         SetStatus($"{deletedPaths.Count}件をゴミ箱へ移動しました");
+        AfterTagFilesRemovedFromList(deletedPaths);
+    }
 
+    /// <summary>
+    /// 一括削除/一括移動でディスク上から居なくなった複数ファイルを_tagFileList/_tagVideoFileListから除去する。
+    /// 開いていたファイルが含まれていれば先頭のファイルを開き直す（タグ閲覧/タグ動画共通、モードで分岐）。
+    /// </summary>
+    private void AfterTagFilesRemovedFromList(HashSet<string> removedPaths)
+    {
         if (_mode == "tagvideo")
         {
-            _tagVideoFileList = [.. _tagVideoFileList.Where(p => !deletedPaths.Contains(p))];
-            if (_videoPath != null && deletedPaths.Contains(_videoPath))
+            _tagVideoFileList = [.. _tagVideoFileList.Where(p => !removedPaths.Contains(p))];
+            if (_videoPath != null && removedPaths.Contains(_videoPath))
             {
-                if (_tagVideoFileList.Count > 0)
+                if (_tagVideoFileList.Count > 0 && _openNextAfterRemove)
                 {
                     _tagVideoFileIndex = 0;
                     PlayVideo(_tagVideoFileList[0], trackSiblings: false);
@@ -3023,10 +3047,10 @@ public partial class MainWindow : Window
         }
         else
         {
-            _tagFileList = [.. _tagFileList.Where(p => !deletedPaths.Contains(p))];
-            if (_archivePath != null && deletedPaths.Contains(_archivePath))
+            _tagFileList = [.. _tagFileList.Where(p => !removedPaths.Contains(p))];
+            if (_archivePath != null && removedPaths.Contains(_archivePath))
             {
-                if (_tagFileList.Count > 0)
+                if (_tagFileList.Count > 0 && _openNextAfterRemove)
                 {
                     _tagFileIndex = 0;
                     CloseViewer();
@@ -3034,6 +3058,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
+                    if (_viewerOpen) CloseViewer();
                     _archivePath = null;
                     LoadCancelledPanel.Visibility = Visibility.Collapsed;
                     _tagFileIndex = -1;
@@ -3054,6 +3079,122 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 右クリックメニューの「選択したファイルを移動」サブメニューを、開くたびに移動先候補から作り直す。
+    /// ヘッダーはTextBlockで渡す（文字列のままだとフォルダ名等に含まれる「_」がアクセスキー扱いされて消えるため）。
+    /// </summary>
+    private static void BuildMoveFilesSubmenu(MenuItem menu, int selectedCount,
+        IEnumerable<(string Label, string Folder, bool Copy)> targets, Action<string, bool> onSelect)
+    {
+        menu.Items.Clear();
+        foreach (var (label, folder, copy) in targets)
+        {
+            if (string.IsNullOrEmpty(folder)) continue;
+            var item = new MenuItem
+            {
+                Header = new TextBlock { Text = copy ? $"{label}（コピー）" : label },
+                ToolTip = folder
+            };
+            item.Click += (_, _) => onSelect(folder, copy);
+            menu.Items.Add(item);
+        }
+        if (menu.Items.Count == 0)
+            menu.Items.Add(new MenuItem { Header = new TextBlock { Text = "（移動先が登録されていません）" }, IsEnabled = false });
+        menu.IsEnabled = selectedCount > 0;
+    }
+
+    /// <summary>
+    /// ファイル一覧で複数選択したファイルを、左ペインに登録済みの移動先フォルダへまとめて移動する（タグ閲覧/タグ動画共通）。
+    /// 1件ずつの移動（MoveCurrentTagFile）と同じく、ソースフォルダの対象外に出す＝タグ卒業とみなしFileEntriesは削除する。
+    /// </summary>
+    private async void BulkMoveTagFiles(List<string> paths, string targetFolder)
+    {
+        if (paths.Count == 0) return;
+        if (new Dialogs.ConfirmDialog($"選択した{paths.Count}件を「{targetFolder}」へ移動しますか？") { Owner = this }.ShowDialog() != true)
+            return;
+
+        var movedPaths = await BulkTransferFilesAsync(paths, targetFolder, copy: false, graduateDomain: CurrentTagDomain);
+        if (movedPaths.Count == 0) return;
+
+        SetStatus($"{movedPaths.Count}件を移動しました → {Path.GetFileName(targetFolder)}");
+        AfterTagFilesRemovedFromList(movedPaths);
+    }
+
+    /// <summary>
+    /// 複数ファイルを指定フォルダへ移動/コピーする（一覧の右クリックからの一括移動用、各モード共通）。
+    /// 1件ずつの移動と同じく、同名ファイルはConflictDialogで解決し、移動後に更新日時を現在時刻へ変更する。
+    /// 開いているファイルが含まれる場合は、掴んだままだと移動に失敗するため先に解放する。
+    /// 失敗したファイルはスキップして続行し、最後にまとめて報告する。移動/コピーできた元パスの集合を返す。
+    /// graduateDomain: 指定時は移動できたファイルのタグDBエントリを削除する（タグ卒業）。
+    /// </summary>
+    private async Task<HashSet<string>> BulkTransferFilesAsync(List<string> paths, string targetFolder, bool copy, TagDomain? graduateDomain)
+    {
+        var done = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            Directory.CreateDirectory(targetFolder);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"移動先フォルダを作成できませんでした:\n{ex.Message}");
+            return done;
+        }
+
+        if (!copy)
+        {
+            if (_mode == "tagvideo")
+            {
+                if (_videoPath != null && paths.Contains(_videoPath, StringComparer.OrdinalIgnoreCase))
+                    StopVideo(); // VLCがファイルを開いたままだと移動に失敗するため
+            }
+            else if (_archivePath != null && paths.Contains(_archivePath, StringComparer.OrdinalIgnoreCase))
+            {
+                await ReleaseArchiveLoadAsync(); // 展開中のアーカイブを開いたままだと移動に失敗するため
+            }
+        }
+
+        var verb = copy ? "コピー" : "移動";
+        var failures = new List<string>();
+        for (int i = 0; i < paths.Count; i++)
+        {
+            var src = paths[i];
+            var dst = Path.Combine(targetFolder, Path.GetFileName(src));
+            try
+            {
+                if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(dst), StringComparison.OrdinalIgnoreCase))
+                    continue; // 既に移動先フォルダにある
+
+                if (File.Exists(dst))
+                {
+                    var resolution = ResolveConflict(src, dst);
+                    if (resolution == "skip") continue;
+                    if (resolution == "rename") dst = MakeUniquePath(dst);
+                }
+
+                var identity = graduateDomain != null ? GetFileIdentity(src) : null;
+                var msg = $"{verb}中 ({i + 1}/{paths.Count}): {Path.GetFileName(src)}...";
+                if (copy)
+                    await CopyFileWithProgress(src, dst, msg);
+                else
+                    await MoveFileWithProgress(src, dst, msg);
+                File.SetLastWriteTime(dst, DateTime.Now);
+
+                if (identity != null)
+                    TagRepository.DeleteFileEntryByIdentity(identity.Value.Path, identity.Value.Size, identity.Value.Ticks, graduateDomain!.Value);
+                done.Add(src);
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{Path.GetFileName(src)}: {ex.Message}");
+            }
+        }
+
+        if (failures.Count > 0)
+            ShowError($"{failures.Count}件の{verb}に失敗しました:\n" + string.Join("\n", failures.Take(10))
+                + (failures.Count > 10 ? $"\n...他{failures.Count - 10}件" : ""));
+        return done;
+    }
+
+    /// <summary>
     /// タグ付け・作品名変更など、ファイル一覧の並び順（_tagFileList/_tagVideoFileListの中身）は変えずに
     /// 表示内容（タグ・作品名）だけを最新化したいときに呼ぶ。ランダム等の並び順には一切触れない。
     /// </summary>
@@ -3068,6 +3209,28 @@ public partial class MainWindow : Window
         var dlg = new Dialogs.TagManagerDialog(CurrentTagDomain) { Owner = this };
         dlg.ShowDialog();
         RebuildSidebar();
+    }
+
+    /// <summary>「移動・削除後に次のファイルを開く」チェックボックスを追加する（タグ閲覧/タグ動画/抽出モード共通の設定）。</summary>
+    private void AddOpenNextAfterRemoveCheckBox(System.Windows.Controls.Panel parent, double fontSize)
+    {
+        var cb = new System.Windows.Controls.CheckBox
+        {
+            Content = new TextBlock
+            {
+                Text = "移動・削除後に次のファイルを開く",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Theme.TextBrush,
+                FontFamily = new FontFamily(Theme.FontFamily),
+                FontSize = fontSize
+            },
+            ToolTip = "オフにすると、移動・削除した後はファイルを閉じたままにする",
+            IsChecked = _openNextAfterRemove,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        cb.Checked += (_, _) => { _openNextAfterRemove = true; SaveStateOnly(); };
+        cb.Unchecked += (_, _) => { _openNextAfterRemove = false; SaveStateOnly(); };
+        parent.Children.Add(cb);
     }
 
     /// <summary>タグ閲覧/タグ動画共通のゴミ箱移動ボタンから呼ばれる。実処理は対象・一覧が異なるためモードごとに分岐する。</summary>
@@ -6203,6 +6366,12 @@ public partial class MainWindow : Window
 
             if (!action.Copy) RecordUndo(src, dst, _mode);
             SetStatus($"{verb}しました: {Path.GetFileName(dst)}");
+            // 抽出リストは評価したアーカイブの範囲指定なので、評価を終えたら持ち越さない
+            if (_mode == "extract" && _extractEntries.Count > 0)
+            {
+                _extractEntries.Clear();
+                RebuildExtractList();
+            }
             if (!action.Copy) AfterFileAction();
         }
         catch (Exception ex)
@@ -6369,9 +6538,12 @@ public partial class MainWindow : Window
         if (oldIdx >= 0 && oldIdx < _folderArchives.Count)
             _folderArchives.RemoveAt(oldIdx);
 
-        if (_folderArchives.Count == 0)
+        // 次のファイルを開くかの設定はチェックボックスを置いている抽出モードだけに効かせる
+        if (_folderArchives.Count == 0 || (_mode == "extract" && !_openNextAfterRemove))
         {
+            if (_viewerOpen) CloseViewer();
             _archivePath = null;
+            _currentArchiveIndex = -1;
             LoadCancelledPanel.Visibility = Visibility.Collapsed;
             ThumbnailGrid.Children.Clear();
             _cards.Clear();
@@ -6438,7 +6610,8 @@ public partial class MainWindow : Window
 
         try
         {
-            ExtractRangeToZip(s, end, saveDialog.FileName);
+            using var archive = ArchiveFactory.Open(_archivePath);
+            ExtractRangeToZip(archive, _imageNames, s, end, saveDialog.FileName);
             SetStatus($"抽出完了: {Path.GetFileName(saveDialog.FileName)}");
         }
         catch (Exception ex)
@@ -6447,18 +6620,28 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExtractRangeToZip(int start, int end, string outputPath)
+    /// <param name="onImageWritten">1枚書き込むごとに呼ばれる（進捗表示用）。</param>
+    private static void ExtractRangeToZip(IArchiveReader archive, IReadOnlyList<string> imageNames,
+        int start, int end, string outputPath, Action? onImageWritten = null)
     {
-        if (_archivePath == null) return;
-        using var archive = ArchiveFactory.Open(_archivePath);
-        using var zip = new ZipArchive(File.Create(outputPath), ZipArchiveMode.Create);
-        for (int i = start; i <= end; i++)
+        try
         {
-            var data = archive.ReadEntry(_imageNames[i]);
-            var entryName = Path.GetFileName(_imageNames[i]);
-            var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
-            using var entryStream = entry.Open();
-            entryStream.Write(data);
+            using var zip = new ZipArchive(File.Create(outputPath), ZipArchiveMode.Create);
+            for (int i = start; i <= end; i++)
+            {
+                var data = archive.ReadEntry(imageNames[i]);
+                var entryName = Path.GetFileName(imageNames[i]);
+                var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
+                using (var entryStream = entry.Open())
+                    entryStream.Write(data);
+                onImageWritten?.Invoke();
+            }
+        }
+        catch
+        {
+            // 書きかけの壊れたZIPを残さない
+            try { File.Delete(outputPath); } catch { }
+            throw;
         }
     }
 
@@ -6472,6 +6655,7 @@ public partial class MainWindow : Window
 
         _extractEntries.Add(new ExtractEntry { Start = s, End = end });
         RebuildExtractList();
+        RightSidebarScroller.ScrollToEnd();
         BtnClearSelection_Click(sender, e);
     }
 
@@ -6487,7 +6671,7 @@ public partial class MainWindow : Window
         SetStatus("抽出リストをクリアしました");
     }
 
-    private void BtnExecuteExtract_Click(object sender, RoutedEventArgs e)
+    private async void BtnExecuteExtract_Click(object sender, RoutedEventArgs e)
     {
         if (_extractEntries.Count == 0 || _archivePath == null) return;
         if (string.IsNullOrEmpty(_extractOutputFolder))
@@ -6496,42 +6680,76 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 実行中にリストや開いているアーカイブが変わっても影響しないよう、対象をここで確定しておく
+        var archivePath = _archivePath;
+        var outputFolder = _extractOutputFolder;
+        var imageNames = _imageNames.ToList();
+        var jobs = _extractEntries.Select((entry, listIndex) => (Entry: entry, ListIndex: listIndex))
+            .Where(j => !j.Entry.Extracted).ToList();
+        if (jobs.Count == 0) return;
+        int totalImages = jobs.Sum(j => j.Entry.End - j.Entry.Start + 1);
+
+        var dlg = new ProgressDialog("抽出中...") { Owner = this };
+        dlg.UpdateProgress(0, $"0 / {jobs.Count}件");
+        // 抽出中にメイン画面を操作されないよう、ダイアログを閉じるまで無効化する
+        IsEnabled = false;
+        dlg.Show();
+
+        var completed = new List<ExtractEntry>();
+        Exception? error = null;
         try
         {
-            Directory.CreateDirectory(_extractOutputFolder);
-            int count = 0;
-            for (int i = 0; i < _extractEntries.Count; i++)
+            await Task.Run(() =>
             {
-                var entry = _extractEntries[i];
-                if (entry.Extracted) continue;
-
-                var fileName = BuildExtractFileName(entry, i, _archivePath);
-                var outputPath = Path.Combine(_extractOutputFolder, fileName);
-
-                // Unique filename
-                if (File.Exists(outputPath))
+                Directory.CreateDirectory(outputFolder);
+                using var archive = ArchiveFactory.Open(archivePath);
+                int imagesDone = 0;
+                for (int k = 0; k < jobs.Count; k++)
                 {
-                    var stem = Path.GetFileNameWithoutExtension(outputPath);
-                    int n = 2;
-                    while (File.Exists(outputPath))
+                    var (entry, listIndex) = jobs[k];
+                    var outputPath = Path.Combine(outputFolder, BuildExtractFileName(entry, listIndex, archivePath));
+
+                    // Unique filename
+                    if (File.Exists(outputPath))
                     {
-                        outputPath = Path.Combine(_extractOutputFolder, $"{stem}_{n}.zip");
-                        n++;
+                        var stem = Path.GetFileNameWithoutExtension(outputPath);
+                        int n = 2;
+                        while (File.Exists(outputPath))
+                        {
+                            outputPath = Path.Combine(outputFolder, $"{stem}_{n}.zip");
+                            n++;
+                        }
                     }
+
+                    var jobLabel = $"{k + 1} / {jobs.Count}件";
+                    var outputName = Path.GetFileName(outputPath);
+                    Dispatcher.BeginInvoke(() => dlg.SetMessage($"抽出中: {outputName}"));
+                    ExtractRangeToZip(archive, imageNames, entry.Start, entry.End, outputPath, () =>
+                    {
+                        imagesDone++;
+                        var pct = (double)imagesDone / totalImages * 100;
+                        var text = $"{jobLabel}  {imagesDone} / {totalImages}枚 ({pct:F0}%)";
+                        Dispatcher.BeginInvoke(() => dlg.UpdateProgress(pct, text));
+                    });
+                    completed.Add(entry);
                 }
-
-                ExtractRangeToZip(entry.Start, entry.End, outputPath);
-                entry.Extracted = true;
-                count++;
-            }
-
-            RebuildExtractList();
-            SetStatus($"{count}件の抽出が完了しました");
+            });
         }
         catch (Exception ex)
         {
-            ShowError($"抽出に失敗しました:\n{ex.Message}");
+            error = ex;
         }
+
+        dlg.Close();
+        IsEnabled = true;
+        // 失敗しても書き終わった分は抽出済みにする
+        foreach (var entry in completed) entry.Extracted = true;
+        RebuildExtractList();
+
+        if (error != null)
+            ShowError($"抽出に失敗しました（{completed.Count}件は完了）:\n{error.Message}");
+        else
+            SetStatus($"{completed.Count}件の抽出が完了しました");
     }
 
     /// <summary>
@@ -6647,6 +6865,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _extractListCts;
     // _extractFileList の参照が変わっていなければ、パネルは既にそのリストの内容を反映している
     private List<string>? _extractFileListPanelBuiltFor;
+    // 再描画中に選択を復元する間は、選択変更イベントでヘッダーを書き換えない
+    private bool _suppressExtractFileListSelection;
 
     private sealed record ExtractFileListItem(string Path, Func<string?> GetCurrentPath)
     {
@@ -6813,13 +7033,18 @@ public partial class MainWindow : Window
     {
         if (forceRefreshContent || !ReferenceEquals(_extractFileListPanelBuiltFor, _extractFileList))
         {
-            // 印の更新だけなら選択行をそのまま残す
-            var selectedPath = forceRefreshContent ? (ExtractFileListPanel.SelectedItem as ExtractFileListItem)?.Path : null;
+            // 印の更新だけなら複数選択をそのまま残す
+            var selectedPaths = forceRefreshContent
+                ? ExtractFileListPanel.SelectedItems.Cast<ExtractFileListItem>().Select(i => i.Path).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : null;
+            _suppressExtractFileListSelection = true;
             var items = _extractFileList.Select(p => new ExtractFileListItem(p, () => _archivePath)).ToList();
             ExtractFileListPanel.ItemsSource = items;
-            if (selectedPath != null)
-                ExtractFileListPanel.SelectedItem = items.FirstOrDefault(i => string.Equals(i.Path, selectedPath, StringComparison.OrdinalIgnoreCase));
+            if (selectedPaths is { Count: > 0 })
+                foreach (var item in items.Where(i => selectedPaths.Contains(i.Path)))
+                    ExtractFileListPanel.SelectedItems.Add(item);
             _extractFileListPanelBuiltFor = _extractFileList;
+            _suppressExtractFileListSelection = false;
         }
 
         UpdateExtractFileListHeaderText();
@@ -6827,7 +7052,16 @@ public partial class MainWindow : Window
 
     private void UpdateExtractFileListHeaderText()
     {
-        TxtExtractFileListHeader.Text = _extractFileList.Count == 0 ? "ファイル一覧" : $"ファイル一覧（{_extractFileList.Count:N0}件）";
+        var selectedCount = ExtractFileListPanel.SelectedItems.Count;
+        TxtExtractFileListHeader.Text = _extractFileList.Count == 0 ? "ファイル一覧"
+            : selectedCount > 1 ? $"ファイル一覧（{_extractFileList.Count:N0}件 / {selectedCount}件選択中）"
+            : $"ファイル一覧（{_extractFileList.Count:N0}件）";
+    }
+
+    private void ExtractFileListPanel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressExtractFileListSelection) return;
+        UpdateExtractFileListHeaderText();
     }
 
     /// <summary>ダブルクリックしたファイルを開く。以降の前後移動は検索結果の並びになる。</summary>
@@ -6857,19 +7091,41 @@ public partial class MainWindow : Window
 
     private void ExtractFileListContextMenu_Opened(object sender, RoutedEventArgs e)
     {
-        bool hasSelection = ExtractFileListPanel.SelectedItem != null;
-        MenuOpenExtractFileInExplorer.IsEnabled = hasSelection;
-        MenuOpenExtractFileWithDefault.IsEnabled = hasSelection;
+        bool singleSelection = ExtractFileListPanel.SelectedItems.Count == 1;
+        MenuOpenExtractFileInExplorer.IsEnabled = singleSelection;
+        MenuOpenExtractFileWithDefault.IsEnabled = singleSelection;
+        // 移動先は左ペインのアクションボタン（現在のプリセット）に登録してあるフォルダ
+        var paths = ExtractFileListPanel.SelectedItems.Cast<ExtractFileListItem>().Select(i => i.Path).ToList();
+        BuildMoveFilesSubmenu(MenuMoveExtractFiles, paths.Count,
+            _extractActions.Select(a => (a.Label, a.Folder, a.Copy)),
+            (folder, copy) => BulkMoveExtractFiles(paths, folder, copy));
     }
 
     private void BtnOpenExtractFileInExplorer_Click(object sender, RoutedEventArgs e)
     {
-        if (ExtractFileListPanel.SelectedItem is ExtractFileListItem item) OpenFileLocationInExplorer(item.Path);
+        if (ExtractFileListPanel.SelectedItems.Count != 1) return;
+        OpenFileLocationInExplorer(((ExtractFileListItem)ExtractFileListPanel.SelectedItems[0]!).Path);
     }
 
     private void BtnOpenExtractFileWithDefault_Click(object sender, RoutedEventArgs e)
     {
-        if (ExtractFileListPanel.SelectedItem is ExtractFileListItem item) OpenWithDefaultProgram(item.Path);
+        if (ExtractFileListPanel.SelectedItems.Count != 1) return;
+        OpenWithDefaultProgram(((ExtractFileListItem)ExtractFileListPanel.SelectedItems[0]!).Path);
+    }
+
+    /// <summary>ファイル一覧で複数選択したファイルを、アクションボタンの移動先へまとめて移動（コピー指定のボタンならコピー）する。</summary>
+    private async void BulkMoveExtractFiles(List<string> paths, string targetFolder, bool copy)
+    {
+        if (paths.Count == 0) return;
+        var verb = copy ? "コピー" : "移動";
+        if (new Dialogs.ConfirmDialog($"選択した{paths.Count}件を「{targetFolder}」へ{verb}しますか？") { Owner = this }.ShowDialog() != true)
+            return;
+
+        var donePaths = await BulkTransferFilesAsync(paths, targetFolder, copy, graduateDomain: null);
+        if (donePaths.Count == 0) return;
+
+        SetStatus($"{donePaths.Count}件を{verb}しました → {Path.GetFileName(targetFolder)}");
+        if (!copy) AfterExtractFilesRemovedFromList(donePaths);
     }
 
     /// <summary>
@@ -6885,11 +7141,13 @@ public partial class MainWindow : Window
         // 参照を変えずに書き換えると、右サイドバーの再描画判定（参照比較）に引っかからず表示が更新されない
         _extractFileList = [.. _extractFileList.Where((_, i) => i != oldIdx)];
 
-        if (_extractFileList.Count == 0)
+        if (_extractFileList.Count == 0 || !_openNextAfterRemove)
         {
+            if (_viewerOpen) CloseViewer();
             _archivePath = null;
             LoadCancelledPanel.Visibility = Visibility.Collapsed;
             _extractFileIndex = -1;
+            _currentArchiveIndex = -1;
             ThumbnailGrid.Children.Clear();
             _cards.Clear();
             EmptyMessage.Visibility = Visibility.Visible;
@@ -6901,6 +7159,56 @@ public partial class MainWindow : Window
 
         CloseViewer();
         LoadArchive(_extractFileList[Math.Clamp(oldIdx, 0, _extractFileList.Count - 1)], keepViewer: false);
+    }
+
+    /// <summary>
+    /// 一覧の右クリックから一括移動したファイルを、検索結果一覧とフォルダ単位の一覧の両方から除く。
+    /// 開いていたファイルも移動した場合は、検索結果から開いていたなら検索結果の、フォルダから開いていたならフォルダ内の、
+    /// 同じ位置に繰り上がってきたファイルを開く（AfterExtractFileRemovedFromList()の複数ファイル版）。
+    /// </summary>
+    private void AfterExtractFilesRemovedFromList(HashSet<string> removedPaths)
+    {
+        bool currentRemoved = _archivePath != null && removedPaths.Contains(_archivePath);
+        bool openedFromList = _extractFileIndex >= 0;
+        // 開いていたファイルより前で残る件数＝除去後に同じ位置となるインデックス
+        int nextExtractIdx = _extractFileList.Take(Math.Max(_extractFileIndex, 0)).Count(p => !removedPaths.Contains(p));
+        int nextFolderIdx = _folderArchives.Take(Math.Max(_currentArchiveIndex, 0)).Count(p => !removedPaths.Contains(p));
+
+        // 参照を変えずに書き換えると、右サイドバーの再描画判定（参照比較）に引っかからず表示が更新されない
+        _extractFileList = [.. _extractFileList.Where(p => !removedPaths.Contains(p))];
+        _folderArchives.RemoveAll(removedPaths.Contains);
+
+        if (!currentRemoved)
+        {
+            _extractFileIndex = _archivePath != null ? IndexOfExtractFile(_archivePath) : -1;
+            _currentArchiveIndex = _archivePath != null
+                ? _folderArchives.FindIndex(p => string.Equals(p, _archivePath, StringComparison.OrdinalIgnoreCase))
+                : -1;
+            UpdateNavigation();
+            RebuildExtractFileListPanel();
+            return;
+        }
+
+        var nextList = openedFromList ? _extractFileList : _folderArchives;
+        if (nextList.Count == 0 || !_openNextAfterRemove)
+        {
+            if (_viewerOpen) CloseViewer();
+            _archivePath = null;
+            LoadCancelledPanel.Visibility = Visibility.Collapsed;
+            _extractFileIndex = -1;
+            _currentArchiveIndex = -1;
+            ThumbnailGrid.Children.Clear();
+            _cards.Clear();
+            EmptyMessage.Visibility = Visibility.Visible;
+            UpdateNavigation();
+            ClearStatusBar();
+            RebuildSidebar();
+            return;
+        }
+
+        var nextIdx = openedFromList ? nextExtractIdx : nextFolderIdx;
+        CloseViewer();
+        LoadArchive(nextList[Math.Clamp(nextIdx, 0, nextList.Count - 1)], keepViewer: false);
     }
 
     // ======== VIDEO ========
