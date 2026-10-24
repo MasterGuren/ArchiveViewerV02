@@ -586,4 +586,158 @@ public static class TagRepository
         cmd.Parameters.AddWithValue("$tagId", tagId);
         cmd.ExecuteNonQuery();
     }
+
+    // === タグプリセット ===
+
+    private static (string Presets, string PresetTags) PresetTables(TagDomain domain) => domain switch
+    {
+        TagDomain.Video => ("VideoTagPresets", "VideoTagPresetTags"),
+        _ => ("TagPresets", "TagPresetTags")
+    };
+
+    /// <summary>全プリセットを名前順に、含まれるタグ（カテゴリ順）付きで返す。</summary>
+    public static List<TagPreset> GetTagPresets(TagDomain domain = TagDomain.Image)
+    {
+        var tbl = Tables(domain);
+        var ptbl = PresetTables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        var result = new List<TagPreset>();
+        var byId = new Dictionary<long, TagPreset>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $"SELECT Id, Name FROM {ptbl.Presets} ORDER BY SortOrder, Name;";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var preset = new TagPreset { Id = reader.GetInt64(0), Name = reader.GetString(1) };
+                result.Add(preset);
+                byId[preset.Id] = preset;
+            }
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $"""
+                SELECT pt.PresetId, t.Id, t.MinorCategoryId, t.Name, t.SortOrder, t.Color
+                FROM {ptbl.PresetTags} pt
+                JOIN {tbl.Tags} t ON t.Id = pt.TagId
+                LEFT JOIN {tbl.Minor} mc ON mc.Id = t.MinorCategoryId
+                LEFT JOIN {tbl.Major} majc ON majc.Id = mc.MajorCategoryId
+                ORDER BY
+                    (majc.Id IS NULL), majc.SortOrder, majc.Name,
+                    (mc.Id IS NULL), mc.SortOrder, mc.Name,
+                    t.SortOrder, t.Name;
+                """;
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                if (!byId.TryGetValue(reader.GetInt64(0), out var preset)) continue;
+                preset.Tags.Add(new Tag
+                {
+                    Id = reader.GetInt64(1),
+                    MinorCategoryId = reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                    Name = reader.GetString(3),
+                    SortOrder = reader.GetInt32(4),
+                    Color = reader.IsDBNull(5) ? null : reader.GetString(5)
+                });
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// プリセットを登録する。同名のプリセットが既にあれば、タグの組み合わせを置き換える（並び順はそのまま）。
+    /// 新規の場合は一覧の末尾に追加する。
+    /// </summary>
+    public static void SaveTagPreset(string name, IEnumerable<long> tagIds, TagDomain domain = TagDomain.Image)
+    {
+        var ptbl = PresetTables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        using var tx = conn.BeginTransaction();
+
+        long presetId;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = $"""
+                INSERT OR IGNORE INTO {ptbl.Presets} (Name, SortOrder)
+                    VALUES ($name, (SELECT COALESCE(MAX(SortOrder) + 1, 0) FROM {ptbl.Presets}));
+                SELECT Id FROM {ptbl.Presets} WHERE Name = $name;
+                """;
+            cmd.Parameters.AddWithValue("$name", name);
+            presetId = (long)cmd.ExecuteScalar()!;
+        }
+
+        ReplaceTagPresetTags(conn, tx, presetId, tagIds, domain);
+        tx.Commit();
+    }
+
+    /// <summary>既存プリセットのタグの組み合わせを置き換える（管理ダイアログの「タグを編集」用）。</summary>
+    public static void SetTagPresetTags(long presetId, IEnumerable<long> tagIds, TagDomain domain = TagDomain.Image)
+    {
+        using var conn = TagDatabaseService.CreateConnection();
+        using var tx = conn.BeginTransaction();
+        ReplaceTagPresetTags(conn, tx, presetId, tagIds, domain);
+        tx.Commit();
+    }
+
+    private static void ReplaceTagPresetTags(SqliteConnection conn, SqliteTransaction tx, long presetId, IEnumerable<long> tagIds, TagDomain domain)
+    {
+        var ptbl = PresetTables(domain);
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = $"DELETE FROM {ptbl.PresetTags} WHERE PresetId = $id;";
+            cmd.Parameters.AddWithValue("$id", presetId);
+            cmd.ExecuteNonQuery();
+        }
+
+        foreach (var tagId in tagIds)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"INSERT OR IGNORE INTO {ptbl.PresetTags} (PresetId, TagId) VALUES ($id, $tagId);";
+            cmd.Parameters.AddWithValue("$id", presetId);
+            cmd.Parameters.AddWithValue("$tagId", tagId);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    public static void RenameTagPreset(long id, string newName, TagDomain domain = TagDomain.Image)
+    {
+        var ptbl = PresetTables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"UPDATE {ptbl.Presets} SET Name = $name WHERE Id = $id;";
+        cmd.Parameters.AddWithValue("$name", newName);
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    public static void SetTagPresetSortOrders(List<long> orderedIds, TagDomain domain = TagDomain.Image)
+    {
+        var ptbl = PresetTables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        using var tx = conn.BeginTransaction();
+        for (int i = 0; i < orderedIds.Count; i++)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"UPDATE {ptbl.Presets} SET SortOrder = $sort WHERE Id = $id;";
+            cmd.Parameters.AddWithValue("$sort", i);
+            cmd.Parameters.AddWithValue("$id", orderedIds[i]);
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
+
+    public static void DeleteTagPreset(long id, TagDomain domain = TagDomain.Image)
+    {
+        var ptbl = PresetTables(domain);
+        using var conn = TagDatabaseService.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"DELETE FROM {ptbl.Presets} WHERE Id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
 }

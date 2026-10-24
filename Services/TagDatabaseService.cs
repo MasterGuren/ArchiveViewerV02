@@ -149,6 +149,31 @@ public static class TagDatabaseService
 
             CREATE INDEX IF NOT EXISTS idx_video_fileentries_path ON VideoFileEntries(FilePath);
             CREATE INDEX IF NOT EXISTS idx_video_filetags_tag ON VideoFileTags(TagId);
+
+            -- タグプリセット（名前付きのタグの組み合わせ）。タグが削除されたらプリセットからも外れる
+            CREATE TABLE IF NOT EXISTS TagPresets (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL UNIQUE,
+                SortOrder INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS TagPresetTags (
+                PresetId INTEGER NOT NULL REFERENCES TagPresets(Id) ON DELETE CASCADE,
+                TagId INTEGER NOT NULL REFERENCES Tags(Id) ON DELETE CASCADE,
+                PRIMARY KEY (PresetId, TagId)
+            );
+
+            CREATE TABLE IF NOT EXISTS VideoTagPresets (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL UNIQUE,
+                SortOrder INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS VideoTagPresetTags (
+                PresetId INTEGER NOT NULL REFERENCES VideoTagPresets(Id) ON DELETE CASCADE,
+                TagId INTEGER NOT NULL REFERENCES VideoTags(Id) ON DELETE CASCADE,
+                PRIMARY KEY (PresetId, TagId)
+            );
             """;
         cmd.ExecuteNonQuery();
 

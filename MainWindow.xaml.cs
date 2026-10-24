@@ -867,6 +867,9 @@ public partial class MainWindow : Window
 
     // ======== TAG SIDEBAR ========
 
+    /// <summary>「🗑 タグを外す」モードに入ったときのファイル。表示中ファイルと違えば（別ファイルに移ったら）解除扱い。</summary>
+    private string? _tagRemoveModePath;
+
     /// <summary>
     /// タグ閲覧/タグ動画共通。「作業フォルダ」「作品名」をスクロールに追従しない左ペイン上部の固定領域に表示する。
     /// CurrentTagFilePath/CurrentTagDomain経由でモードに応じた対象（_archivePath/_videoPath）を自動的に見る。
@@ -951,11 +954,43 @@ public partial class MainWindow : Window
 
         AddSidebarSeparator(LeftSidebarPinned, margin: 5);
 
-        AddSidebarLabel("設定済みタグ", LeftSidebarPinned, fontSize: 12, marginTop: 0, marginBottom: 2);
+        var currentTags = GetCurrentFileTags();
+
+        // 削除モードは入ったときのファイルでだけ有効。別のファイルに移ったら自動で解除する
+        if (_tagRemoveModePath != path) _tagRemoveModePath = null;
+        var removeMode = _tagRemoveModePath != null;
+
+        var tagHeaderRow = new DockPanel { Margin = new Thickness(0, 0, 0, 2) };
+        var removeModeBtn = CreateSidebarButton(removeMode ? "✓ 終了" : "🗑 タグを外す", () =>
+        {
+            _tagRemoveModePath = removeMode ? null : path;
+            BuildPinnedTagHeader();
+        });
+        removeModeBtn.Padding = new Thickness(6, 0, 6, 0);
+        removeModeBtn.Margin = new Thickness(4, 0, 0, 0);
+        removeModeBtn.FontSize = 11;
+        removeModeBtn.ToolTip = removeMode
+            ? "タグを外すモードを終了（クリックで検索に戻る）"
+            : "タグを外すモードに入る（タグをクリックするとこのファイルから外す。別のファイルに移ると自動で解除）";
+        removeModeBtn.IsEnabled = removeMode || currentTags.Count > 0;
+        if (removeMode) removeModeBtn.Background = new SolidColorBrush(Color.FromRgb(0x7f, 0x1d, 0x1d));
+        DockPanel.SetDock(removeModeBtn, Dock.Right);
+        tagHeaderRow.Children.Add(removeModeBtn);
+        AddSidebarLabel("設定済みタグ", tagHeaderRow, fontSize: 12, marginTop: 0, marginBottom: 0);
+        LeftSidebarPinned.Children.Add(tagHeaderRow);
+
         var tagWrapPanel = new WrapPanel();
-        foreach (var tag in GetCurrentFileTags())
-            tagWrapPanel.Children.Add(BuildTagChipRow(tag));
+        foreach (var tag in currentTags)
+            tagWrapPanel.Children.Add(BuildTagChipRow(tag, removeMode));
         LeftSidebarPinned.Children.Add(tagWrapPanel);
+
+        var savePresetBtn = CreateSidebarButton("💾 タグをプリセット登録", () => SaveCurrentTagsAsPreset());
+        savePresetBtn.Padding = new Thickness(2, 1, 2, 1);
+        savePresetBtn.Margin = new Thickness(0, 3, 0, 0);
+        savePresetBtn.FontSize = 11;
+        savePresetBtn.ToolTip = "今付いているタグの組み合わせに名前を付けて登録（ファイル一覧の右クリックから貼り付け可）";
+        savePresetBtn.IsEnabled = currentTags.Count > 0;
+        LeftSidebarPinned.Children.Add(savePresetBtn);
 
         AddSidebarSeparator(LeftSidebarPinned, margin: 5);
     }
@@ -977,6 +1012,10 @@ public partial class MainWindow : Window
         var tagManagerBtn = CreateSidebarButton("🏷 タグ管理", () => OpenTagManagerDialog());
         tagManagerBtn.Margin = new Thickness(0, 4, 0, 4);
         LeftSidebar.Children.Add(tagManagerBtn);
+
+        var presetManagerBtn = CreateSidebarButton("📋 タグプリセット管理", () => OpenTagPresetManagerDialog());
+        presetManagerBtn.Margin = new Thickness(0, 0, 0, 4);
+        LeftSidebar.Children.Add(presetManagerBtn);
 
         AddSidebarSeparator();
 
@@ -1100,6 +1139,10 @@ public partial class MainWindow : Window
         var tagManagerBtn = CreateSidebarButton("🏷 タグ管理", () => OpenTagManagerDialog());
         tagManagerBtn.Margin = new Thickness(0, 4, 0, 4);
         LeftSidebar.Children.Add(tagManagerBtn);
+
+        var presetManagerBtn = CreateSidebarButton("📋 タグプリセット管理", () => OpenTagPresetManagerDialog());
+        presetManagerBtn.Margin = new Thickness(0, 0, 0, 4);
+        LeftSidebar.Children.Add(presetManagerBtn);
 
         AddSidebarSeparator();
 
@@ -1701,6 +1744,7 @@ public partial class MainWindow : Window
         MenuOpenTagFileInExplorer.IsEnabled = TagFileListPanel.SelectedItems.Count == 1;
         MenuOpenTagFileWithDefault.IsEnabled = TagFileListPanel.SelectedItems.Count == 1;
         var paths = TagFileListPanel.SelectedItems.Cast<TagFileListItem>().Select(i => i.Path).ToList();
+        BuildTagPresetPasteSubmenu(MenuPasteTagPresetFiles, paths, TagDomain.Image);
         BuildMoveFilesSubmenu(MenuMoveTagFiles, paths.Count,
             _tagMoveFolders.Select(f => (f, f, false)),
             (folder, _) => BulkMoveTagFiles(paths, folder));
@@ -2179,6 +2223,7 @@ public partial class MainWindow : Window
         MenuOpenTagVideoFileInExplorer.IsEnabled = TagVideoFileListPanel.SelectedItems.Count == 1;
         MenuOpenTagVideoFileWithDefault.IsEnabled = TagVideoFileListPanel.SelectedItems.Count == 1;
         var paths = TagVideoFileListPanel.SelectedItems.Cast<TagVideoFileListItem>().Select(i => i.Path).ToList();
+        BuildTagPresetPasteSubmenu(MenuPasteTagVideoPresetFiles, paths, TagDomain.Video);
         BuildMoveFilesSubmenu(MenuMoveTagVideoFiles, paths.Count,
             _tagVideoMoveFolders.Select(f => (f, f, false)),
             (folder, _) => BulkMoveTagFiles(paths, folder));
@@ -2546,7 +2591,11 @@ public partial class MainWindow : Window
         PlayVideo(_tagVideoFileList[idx], trackSiblings: false);
     }
 
-    private StackPanel BuildTagChipRow(Tag tag)
+    /// <summary>
+    /// 左ペインの設定済みタグ1つぶんのピル。通常はクリックでそのタグだけで検索、
+    /// removeMode（タグを外すモード）中は赤枠＋「×」付きで、クリックで表示中ファイルからそのタグを外す。
+    /// </summary>
+    private StackPanel BuildTagChipRow(Tag tag, bool removeMode = false)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 4) };
 
@@ -2559,22 +2608,25 @@ public partial class MainWindow : Window
         var pill = new Border
         {
             Background = bgBrush,
-            BorderBrush = Theme.TagChipOutlineBrush(bgColor),
-            BorderThickness = new Thickness(1),
+            BorderBrush = removeMode ? new SolidColorBrush(Color.FromRgb(0xef, 0x44, 0x44)) : Theme.TagChipOutlineBrush(bgColor),
+            BorderThickness = new Thickness(removeMode ? 2 : 1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(7, 1, 7, 1),
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "クリックでこのタグだけで検索",
+            ToolTip = removeMode ? "クリックでこのファイルからタグを外す" : "クリックでこのタグだけで検索",
             Child = new TextBlock
             {
-                Text = tag.Name,
+                Text = removeMode ? $"{tag.Name} ×" : tag.Name,
                 Foreground = fgBrush,
                 FontFamily = new FontFamily(Theme.FontFamily),
                 FontSize = 11
             }
         };
-        pill.MouseLeftButtonUp += (_, _) => SearchByTagOnly(tag.Id);
+        if (removeMode)
+            pill.MouseLeftButtonUp += (_, _) => ToggleCurrentFileTag(tag.Id, add: false);
+        else
+            pill.MouseLeftButtonUp += (_, _) => SearchByTagOnly(tag.Id);
         row.Children.Add(pill);
         return row;
     }
@@ -2962,6 +3014,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        AddTagsToFiles(paths, tagIds, domain, "");
+    }
+
+    /// <summary>
+    /// 指定タグを全ファイルへ追加する（コピーの貼り付け・プリセットの貼り付け共通）。元から付いているタグは消さない。
+    /// sourceLabel: ステータス表示用（「プリセット「○○」の」など）。
+    /// </summary>
+    private void AddTagsToFiles(List<string> paths, List<long> tagIds, TagDomain domain, string sourceLabel)
+    {
         int applied = 0;
         foreach (var path in paths)
         {
@@ -2973,16 +3034,79 @@ public partial class MainWindow : Window
         }
         if (applied == 0) return;
 
-        SetStatus($"{applied}件のファイルにタグ{tagIds.Count}個を貼り付けました");
+        SetStatus($"{applied}件のファイルに{sourceLabel}タグ{tagIds.Count}個を貼り付けました");
         RebuildSidebar();
         RefreshCurrentTagFileListDisplay();
+    }
+
+    // ======== タグプリセット（名前付きのタグの組み合わせ） ========
+
+    /// <summary>左ペインのボタンから、表示中ファイルに今付いているタグの組み合わせに名前を付けてプリセット登録する。</summary>
+    private void SaveCurrentTagsAsPreset()
+    {
+        var tags = GetCurrentFileTags();
+        if (tags.Count == 0)
+        {
+            SetStatus("タグが設定されていないため、プリセット登録できません");
+            return;
+        }
+
+        var domain = CurrentTagDomain;
+        var dlg = new Dialogs.InputDialog("タグプリセット登録", $"プリセット名を入力してください（タグ{tags.Count}個）") { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        var name = dlg.InputText.Trim();
+        if (name.Length == 0) return;
+
+        if (TagRepository.GetTagPresets(domain).Any(p => p.Name == name)
+            && new Dialogs.ConfirmDialog($"プリセット「{name}」は既にあります。今のタグの組み合わせで上書きしますか？") { Owner = this }.ShowDialog() != true)
+            return;
+
+        TagRepository.SaveTagPreset(name, tags.Select(t => t.Id), domain);
+        SetStatus($"プリセット「{name}」を登録しました: {string.Join(", ", tags.Select(t => t.Name))}");
+    }
+
+    /// <summary>
+    /// 右クリックメニューの「プリセットから貼り付け」サブメニューを、開くたびにDBのプリセット一覧から作り直す。
+    /// 末尾に「プリセット管理...」も置く。ヘッダーはTextBlockで渡す（「_」がアクセスキー扱いされるのを防ぐため）。
+    /// </summary>
+    private void BuildTagPresetPasteSubmenu(MenuItem menu, List<string> paths, TagDomain domain)
+    {
+        menu.Items.Clear();
+        var presets = TagRepository.GetTagPresets(domain);
+        if (presets.Count == 0)
+            menu.Items.Add(new MenuItem { Header = new TextBlock { Text = "（プリセットが登録されていません）" }, IsEnabled = false });
+
+        foreach (var preset in presets)
+        {
+            var item = new MenuItem
+            {
+                Header = new TextBlock { Text = $"{preset.Name}（{preset.Tags.Count}個）" },
+                ToolTip = preset.Tags.Count > 0 ? string.Join(", ", preset.Tags.Select(t => t.Name)) : "（タグがすべて削除されています）",
+                IsEnabled = paths.Count > 0 && preset.Tags.Count > 0
+            };
+            var tagIds = preset.Tags.Select(t => t.Id).ToList();
+            var label = $"プリセット「{preset.Name}」の";
+            item.Click += (_, _) => AddTagsToFiles(paths, tagIds, domain, label);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new Separator());
+        var manageItem = new MenuItem { Header = "プリセット管理..." };
+        manageItem.Click += (_, _) => OpenTagPresetManagerDialog();
+        menu.Items.Add(manageItem);
     }
 
     /// <summary>ファイル一覧で複数選択したファイルをまとめてゴミ箱へ移動する（タグ閲覧/タグ動画共通、モードで分岐）。</summary>
     private async void BulkDeleteTagFiles(List<string> paths)
     {
         if (paths.Count == 0) return;
-        if (new Dialogs.ConfirmDialog($"選択した{paths.Count}件をゴミ箱へ移動しますか？") { Owner = this }.ShowDialog() != true)
+        long totalSize = 0;
+        foreach (var path in paths)
+        {
+            try { totalSize += new FileInfo(path).Length; }
+            catch { /* 存在しない・アクセス不可のファイルは合計に含めない */ }
+        }
+        if (new Dialogs.ConfirmDialog($"選択した{paths.Count}件をゴミ箱へ移動しますか？\n合計サイズ: {FormatSize(totalSize)}") { Owner = this }.ShowDialog() != true)
             return;
 
         // 展開中のアーカイブを開いたままだと削除に失敗するため
@@ -3208,6 +3332,17 @@ public partial class MainWindow : Window
     {
         var dlg = new Dialogs.TagManagerDialog(CurrentTagDomain) { Owner = this };
         dlg.ShowDialog();
+        RebuildSidebar();
+    }
+
+    private void OpenTagPresetManagerDialog()
+    {
+        var dlg = new Dialogs.TagPresetManagerDialog(CurrentTagDomain, _tagPickerDialogWidth, _tagPickerDialogHeight) { Owner = this };
+        dlg.ShowDialog();
+        if (dlg.PickerWidth.HasValue) _tagPickerDialogWidth = dlg.PickerWidth.Value;
+        if (dlg.PickerHeight.HasValue) _tagPickerDialogHeight = dlg.PickerHeight.Value;
+        SaveStateOnly();
+        // プリセットの「タグを編集」から新規タグを作れるので、左ペインのタグ一覧も作り直す
         RebuildSidebar();
     }
 
@@ -6338,6 +6473,20 @@ public partial class MainWindow : Window
         {
             if (_archivePath == null) SetStatus("ファイルが開かれていません");
             return;
+        }
+
+        // アクション後は抽出リストをクリアするので、抽出し忘れた範囲指定が消えないよう確認する
+        if (_mode == "extract")
+        {
+            int pending = _extractEntries.Count(entry => !entry.Extracted);
+            if (pending > 0)
+            {
+                var verbForConfirm = action.Copy ? "コピー" : "移動";
+                if (new Dialogs.ConfirmDialog(
+                        $"抽出リストに未抽出の項目が{pending}件あります。\nこのまま{verbForConfirm}すると抽出リストはクリアされます。続けますか？")
+                    { Owner = this }.ShowDialog() != true)
+                    return;
+            }
         }
 
         var src = _archivePath;
