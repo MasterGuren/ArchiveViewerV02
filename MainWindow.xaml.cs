@@ -107,6 +107,13 @@ public partial class MainWindow : Window
     // ファイル検索の結果。今開いているファイルが含まれている間（_extractFileIndex >= 0）は前後移動もこの順で行う
     private List<string> _extractFileList = [];
     private int _extractFileIndex = -1;
+    // タグ閲覧の「抽出モードで開く」で開いたファイル。これを開いている間は移動アクションを無効にする
+    // （抽出後にタグ閲覧へ戻ってタグを付ける使い方なので、移動で検索結果・タグの紐付けを崩さない）
+    private string? _extractFromTagPath;
+
+    // モード切替で閉じたファイルを、そのモードに戻った時に開き直すための記憶（タグ閲覧/タグ動画のみ）
+    private string? _tagLastOpenedPath;
+    private string? _tagVideoLastOpenedPath;
 
     // Video
     private string? _videoPath;
@@ -433,16 +440,30 @@ public partial class MainWindow : Window
 
     private void SwitchMode(string mode)
     {
+        // 抽出リストは開いていたアーカイブの範囲指定なので、モード切替で閉じるときに持ち越さない
+        if (_extractEntries.Count > 0)
+        {
+            int pending = _extractEntries.Count(entry => !entry.Extracted);
+            if (pending > 0 && new Dialogs.ConfirmDialog(
+                    $"抽出リストに未抽出の項目が{pending}件あります。\nモードを切り替えると抽出リストはクリアされます。続けますか？")
+                { Owner = this }.ShowDialog() != true)
+            {
+                UpdateModeButtons(); // クリックでトグルが切り替わった分を今のモードに戻す
+                return;
+            }
+            _extractEntries.Clear();
+            RebuildExtractList();
+        }
+
+        // タグ閲覧/タグ動画で開いていたファイルは、戻ってきた時に開き直す
+        if (_mode == "tag") _tagLastOpenedPath = _archivePath;
+        else if (_mode == "tagvideo") _tagVideoLastOpenedPath = _videoPath;
+        _extractFromTagPath = null;
+
         ClearStatusBar();
         LoadCancelledPanel.Visibility = Visibility.Collapsed;
         _mode = mode;
-        BtnBrowse.IsChecked = mode == "browse";
-        BtnExtract.IsChecked = mode == "extract";
-        BtnVideo.IsChecked = mode == "video";
-        BtnImage.IsChecked = mode == "image";
-        BtnRating.IsChecked = mode == "rating";
-        BtnTag.IsChecked = mode == "tag";
-        BtnTagVideo.IsChecked = mode == "tagvideo";
+        UpdateModeButtons();
 
         // Show/hide extract UI
         bool isExtract = mode == "extract";
@@ -517,6 +538,39 @@ public partial class MainWindow : Window
         }
 
         RebuildSidebar();
+
+        if (isTag && _tagLastOpenedPath != null)
+        {
+            var path = _tagLastOpenedPath;
+            _tagLastOpenedPath = null;
+            if (File.Exists(path))
+            {
+                _tagFileIndex = _tagFileList.IndexOf(path);
+                _folderRoot = null;
+                LoadArchive(path);
+            }
+        }
+        else if (isTagVideo && _tagVideoLastOpenedPath != null)
+        {
+            var path = _tagVideoLastOpenedPath;
+            _tagVideoLastOpenedPath = null;
+            if (File.Exists(path))
+            {
+                _tagVideoFileIndex = _tagVideoFileList.IndexOf(path);
+                PlayVideo(path, trackSiblings: false);
+            }
+        }
+    }
+
+    private void UpdateModeButtons()
+    {
+        BtnBrowse.IsChecked = _mode == "browse";
+        BtnExtract.IsChecked = _mode == "extract";
+        BtnVideo.IsChecked = _mode == "video";
+        BtnImage.IsChecked = _mode == "image";
+        BtnRating.IsChecked = _mode == "rating";
+        BtnTag.IsChecked = _mode == "tag";
+        BtnTagVideo.IsChecked = _mode == "tagvideo";
     }
 
     private void RightSidebarSplitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
@@ -765,7 +819,15 @@ public partial class MainWindow : Window
         AddSidebarSeparator();
 
         // Actions (execute only)
-        BuildActionButtons(_extractActions, (a) => ExecuteAction(a));
+        bool fromTag = _extractFromTagPath != null && _archivePath == _extractFromTagPath;
+        if (fromTag)
+        {
+            var backBtn = CreateSidebarButton("🏷 タグ閲覧に戻る", () => SwitchMode("tag"));
+            backBtn.Margin = new Thickness(0, 0, 0, 4);
+            LeftSidebar.Children.Add(backBtn);
+            AddSidebarText("タグ閲覧から開いたファイルのため移動はできません");
+        }
+        BuildActionButtons(_extractActions, (a) => ExecuteAction(a), disableMoves: fromTag);
         AddOpenNextAfterRemoveCheckBox(LeftSidebar, fontSize: 13);
 
         AddSidebarSeparator();
@@ -999,6 +1061,12 @@ public partial class MainWindow : Window
     {
         if (_archivePath != null)
         {
+            Button? extractBtn = null;
+            extractBtn = CreateSidebarButton("✂ 抽出モードで開く ▾", () => ShowExtractPresetMenuForTagFile(extractBtn!));
+            extractBtn.Margin = new Thickness(0, 4, 0, 0);
+            extractBtn.ToolTip = "抽出プリセットを選んで、このファイルを抽出モードで開きます（ファイルは移動しません）";
+            LeftSidebar.Children.Add(extractBtn);
+
             var addTagBtn = CreateSidebarButton("+ タグを追加", () => OpenTagPickerForCurrentFile());
             addTagBtn.Margin = new Thickness(0, 4, 0, 0);
             LeftSidebar.Children.Add(addTagBtn);
@@ -3329,6 +3397,64 @@ public partial class MainWindow : Window
         else if (_mode == "tag") RebuildTagFileListPanel(forceRefreshContent: true);
     }
 
+    /// <summary>
+    /// 「抽出モードで開く」の抽出プリセット選択メニュー。カテゴリ付きのプリセットはカテゴリごとのサブメニューにまとめる。
+    /// ヘッダーはTextBlockで渡す（文字列のままだとプリセット名に含まれる「_」がアクセスキー扱いされて消えるため）。
+    /// </summary>
+    private void ShowExtractPresetMenuForTagFile(Button anchor)
+    {
+        if (_extractPresets.Count == 0)
+        {
+            OpenCurrentTagFileInExtractMode(_extractCurrentPreset);
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = anchor, Placement = PlacementMode.Bottom };
+        MenuItem MakeItem(string name)
+        {
+            var item = new MenuItem { Header = new TextBlock { Text = name }, IsChecked = name == _extractCurrentPreset };
+            item.Click += (_, _) => OpenCurrentTagFileInExtractMode(name);
+            return item;
+        }
+
+        var categories = _extractPresets.Values
+            .Select(p => p.Category)
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+        foreach (var cat in categories)
+        {
+            var sub = new MenuItem { Header = new TextBlock { Text = cat } };
+            foreach (var (name, _) in _extractPresets.Where(p => p.Value.Category == cat))
+                sub.Items.Add(MakeItem(name));
+            menu.Items.Add(sub);
+        }
+        foreach (var (name, _) in _extractPresets.Where(p => string.IsNullOrEmpty(p.Value.Category)))
+            menu.Items.Add(MakeItem(name));
+
+        menu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// タグ閲覧で開いているファイルを、指定の抽出プリセットに切り替えた抽出モードで開く（ファイルは元の場所のまま）。
+    /// 抽出後にタグ閲覧へ戻ると、このファイルが開き直される（SwitchModeで記憶）。
+    /// </summary>
+    private void OpenCurrentTagFileInExtractMode(string presetName)
+    {
+        var path = _archivePath;
+        if (path == null) return;
+
+        _extractCurrentPreset = presetName;
+        LoadPreset(presetName, _extractPresets, ref _extractActions, ref _extractSourceFolders, ref _extractTrashFolder);
+        SwitchMode("extract");
+        _extractFromTagPath = path;
+        _folderRoot = null;
+        LoadArchive(path);
+        RebuildSidebar();
+        SaveStateOnly();
+    }
+
     private void OpenTagManagerDialog()
     {
         var dlg = new Dialogs.TagManagerDialog(CurrentTagDomain) { Owner = this };
@@ -4647,7 +4773,7 @@ public partial class MainWindow : Window
 
     // ======== SIDEBAR ACTION BUTTONS (execute only) ========
 
-    private void BuildActionButtons(List<ActionItem> actions, Action<ActionItem> onExecute)
+    private void BuildActionButtons(List<ActionItem> actions, Action<ActionItem> onExecute, bool disableMoves = false)
     {
         AddSidebarLabel("評価アクション");
 
@@ -4659,6 +4785,7 @@ public partial class MainWindow : Window
             var actionBtn = CreateSidebarButton(action.Label, () => onExecute(action), action.Color);
             actionBtn.MinWidth = 80;
             actionBtn.ToolTip = string.IsNullOrEmpty(action.Folder) ? "(フォルダ未設定)" : action.Folder;
+            if (disableMoves && !action.Copy) actionBtn.IsEnabled = false;
             row.Children.Add(actionBtn);
 
             var modeText = new TextBlock
@@ -6488,6 +6615,12 @@ public partial class MainWindow : Window
                     { Owner = this }.ShowDialog() != true)
                     return;
             }
+        }
+
+        if (!action.Copy && _mode == "extract" && _archivePath == _extractFromTagPath)
+        {
+            SetStatus("タグ閲覧から開いたファイルは移動できません");
+            return;
         }
 
         var src = _archivePath;
