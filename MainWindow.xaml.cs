@@ -1473,6 +1473,7 @@ public partial class MainWindow : Window
     {
         var candidates = await BuildTagFileEntriesAsync(ct);
         var text = TxtTagSearchText.Text.Trim();
+        var keywords = SplitSearchKeywords(text);
         var requireNoTags = ChkSearchNoTags.IsChecked == true;
         var requireHasTags = ChkSearchHasTags.IsChecked == true;
         var requireNoTitle = ChkSearchNoTitle.IsChecked == true;
@@ -1510,19 +1511,23 @@ public partial class MainWindow : Window
                 if (requireNoTitle && hasTitle) continue;
                 if (requireHasTitle && !hasTitle) continue;
 
-                if (!string.IsNullOrEmpty(text))
-                {
-                    var fileName = Path.GetFileNameWithoutExtension(entry.Path);
-                    bool nameMatch = fileName.Contains(text, StringComparison.OrdinalIgnoreCase);
-                    bool titleMatch = hasTitle && workTitle!.Contains(text, StringComparison.OrdinalIgnoreCase);
-                    if (!nameMatch && !titleMatch) continue;
-                }
+                if (keywords.Length > 0 &&
+                    !MatchesAllKeywords(keywords, Path.GetFileNameWithoutExtension(entry.Path), workTitle)) continue;
 
                 results.Add(entry.Path);
             }
             return results;
         }, ct);
     }
+
+    /// <summary>検索テキストを半角/全角スペースで区切ってキーワードに分割する（AND検索用）。</summary>
+    private static string[] SplitSearchKeywords(string text) =>
+        text.Split([' ', '　'], StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>全キーワードが、それぞれファイル名か作品名のいずれかに含まれるか。</summary>
+    private static bool MatchesAllKeywords(string[] keywords, string fileName, string? workTitle) =>
+        keywords.All(k => fileName.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+                          (!string.IsNullOrEmpty(workTitle) && workTitle.Contains(k, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>
     /// 検索実行はリストを更新するだけで、開いているファイルは閉じない・新たに何かを開くこともしない。
@@ -1973,6 +1978,7 @@ public partial class MainWindow : Window
     {
         var candidates = await BuildTagVideoFileEntriesAsync(ct);
         var text = TxtTagVideoSearchText.Text.Trim();
+        var keywords = SplitSearchKeywords(text);
         var requireNoTags = ChkSearchVideoNoTags.IsChecked == true;
         var requireHasTags = ChkSearchVideoHasTags.IsChecked == true;
         var requireNoTitle = ChkSearchVideoNoTitle.IsChecked == true;
@@ -2009,13 +2015,8 @@ public partial class MainWindow : Window
                 if (requireNoTitle && hasTitle) continue;
                 if (requireHasTitle && !hasTitle) continue;
 
-                if (!string.IsNullOrEmpty(text))
-                {
-                    var fileName = Path.GetFileNameWithoutExtension(entry.Path);
-                    bool nameMatch = fileName.Contains(text, StringComparison.OrdinalIgnoreCase);
-                    bool titleMatch = hasTitle && workTitle!.Contains(text, StringComparison.OrdinalIgnoreCase);
-                    if (!nameMatch && !titleMatch) continue;
-                }
+                if (keywords.Length > 0 &&
+                    !MatchesAllKeywords(keywords, Path.GetFileNameWithoutExtension(entry.Path), workTitle)) continue;
 
                 results.Add(entry.Path);
             }
@@ -7113,7 +7114,7 @@ public partial class MainWindow : Window
     private async Task<List<string>> ComputeExtractSearchResultsAsync(CancellationToken ct)
     {
         var folders = DedupeNestedFolders(_extractSourceFolders);
-        var text = TxtExtractSearchText.Text.Trim();
+        var keywords = SplitSearchKeywords(TxtExtractSearchText.Text.Trim());
         var sort = _folderSort;
         var sortDir = _folderSortDir;
 
@@ -7138,8 +7139,8 @@ public partial class MainWindow : Window
                     }
 
                     if (!Theme.ArchiveExtensions.Contains(file.Extension.ToLowerInvariant())) continue;
-                    if (text.Length > 0 &&
-                        !Path.GetFileNameWithoutExtension(file.Name).Contains(text, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (keywords.Length > 0 &&
+                        !MatchesAllKeywords(keywords, Path.GetFileNameWithoutExtension(file.Name), null)) continue;
                     list.Add(new TagFileEntry(file.FullName, file.Length, file.LastWriteTimeUtc.Ticks, file.CreationTime));
                 }
             }
